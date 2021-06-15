@@ -46,7 +46,7 @@ GCA3DRenderer = function(wind, cont, pick) {
   var self = this;
   this.type = 'GCA3DRenderer';
   this.config = undefined;
-  Object.defineProperty(self, 'version', {value: '0.0.3', writable: false});
+  Object.defineProperty(self, 'version', {value: '0.0.4', writable: false});
   this.picker = pick;
   this.curPath = 0;	   // Current path
   this.curPathIdx = 0;     // Index of position on current path
@@ -259,7 +259,7 @@ GCA3DRenderer = function(wind, cont, pick) {
 	size: self.config.disc.radius,
 	position: new THREE.Vector3(vtx[0], vtx[1], vtx[2]),
 	normal: new THREE.Vector3(tan[0], tan[1], tan[2]),
-	extrude: self.config.disc.thickness});
+	extrude: ext});
   }
 
   /*!
@@ -568,10 +568,15 @@ GCA3DRenderer = function(wind, cont, pick) {
     let name = 'disc';
     let vtx = pd.points[self.curPathIdx];
     let tan = pd.tangents[self.curPathIdx];
+    let ext = self.config.disc.thickness;
+    if(!Boolean(ext)) {
+      ext = 1.0;
+    }
     self.ren.updateModel({name: name,
 	size: self.config.disc.radius,
 	position: new THREE.Vector3(vtx[0], vtx[1], vtx[2]),
-	normal: new THREE.Vector3(tan[0], tan[1], tan[2])});
+	normal: new THREE.Vector3(tan[0], tan[1], tan[2]),
+	extrude: ext});
     // Update highlight
     name = 'highlight';
     let vertices = pd.points.slice(self.roiIdx[0], self.roiIdx[1]);
