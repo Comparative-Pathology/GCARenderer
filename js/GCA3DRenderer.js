@@ -45,13 +45,22 @@
 GCA3DRenderer = function(wind, cont, pick) {
   var self = this;
   this.type = 'GCA3DRenderer';
-  this.config = undefined;
-  Object.defineProperty(self, 'version', {value: '0.0.4', writable: false});
-  this.picker = pick;
-  this.curPath = 0;	   // Current path
-  this.curPathIdx = 0;     // Index of position on current path
-  this.roiIdx = [0, 0];	   // Indices defining the ROI on current path
-  this.ren = new MARenderer(wind, cont);
+  this._config = undefined;
+  Object.defineProperty(self, 'version', {value: '0.1.0', writable: false});
+  this._pickerFn = pick;
+  this._curPath = 0;	   	// Current path
+  this._curPathIdx = 0;     	// Index of position on current path
+  this._roiIdx = [0, 0];	// Indices defining the ROI on current path
+  this._ren = new MARenderer(wind, cont);
+  this.nameSep = '-';
+  this.referenceNamePrefix = 'ref';
+  this.anatomyNamePrefix = 'ana';
+  this.discNamePrefix = 'disc';
+  this.pathNamePrefix = 'path';
+  this.landmarkNamePrefix = 'lm';
+  this.landmarkNameLblPrefix = 'll';
+  this.markerNamePrefix = 'mm';
+  this.markerNameLblPrefix = 'ml';
 
   /*!
    * \function	init
@@ -61,19 +70,22 @@ GCA3DRenderer = function(wind, cont, pick) {
    */
   this.init = function(cfg) {
     if(this._isString(cfg)) {
-      self._setConfig(self._loadJson(cfg));
-    } else {
-      self._setConfig(cfg);
+      cfg = self._loadJson(cfg);
     }
+    if(this._isArray(cfg)) {
+      cfg = cfg[0];
+    }
+    self._setConfig(cfg);
     this._loadPaths();
-    this.ren.init();
-    this.ren.markerSizeSet(self.config.display_prop.marker_size);
-    if(!Boolean(self.config.display_prop.pick_precision)) {
-      self.config.display_prop["pick_precision"] = 1.0;
+    this._ren.init();
+    this._ren.markerSizeSet(self._config.display_props.marker_size);
+    if(!Boolean(self._config.display_props.pick_precision)) {
+      self._config.display_props['pick_precision'] = 1.0;
     }
-    self.ren.raycaster.linePrecision = self.config.display_prop.pick_precision;
-    this.ren.win.addEventListener('click', this.ren._pick, false);
-    this.ren.addEventListener('pick', self._picker, false);
+    self._ren.raycaster.linePrecision =
+        self._config.display_props.pick_precision;
+    this._ren.win.addEventListener('click', this._ren._pick, false);
+    this._ren.addEventListener('pick', self._picker, false);
   }
 
   /*!
@@ -87,58 +99,61 @@ GCA3DRenderer = function(wind, cont, pick) {
    *				which has the following form:
    */
   this.addModels = function() {
-    if(Boolean(self.config.reference_surface)) {
-      let ref = self.config.reference_surface;
-      let dsp = ref.display_prop;
-      this.ren.addModel({name:        'reference',
-	     	         path:        ref.file,
-		         color:       dsp.color,
-		         opacity:     dsp.opacity,
-			 transparent: true});
+    let name = undefined;
+    if(Boolean(self._config.reference_surface)) {
+      let ref = self._config.reference_surface;
+      let dsp = ref.display_props;
+      this._ren.addModel({name:        self.getReferenceName(),
+	     	          path:        ref.filepath + '/' + ref.filename,
+		          color:       dsp.color,
+		          opacity:     dsp.opacity,
+			  transparent: true});
     }
-    if(Boolean(self.config.anatomy_surfaces) &&
-       this._isArray(self.config.anatomy_surfaces) &&
-       (self.config.anatomy_surfaces.length > 0)) {
-      for(let i = 0, l = self.config.anatomy_surfaces.length; i < l; ++i) {
-        let anat = self.config.anatomy_surfaces[i];
-	let dsp = anat.display_prop;
-	this.ren.addModel({name:        'anatomy-' + i.toString(),
-			   path:        anat.file,
-			   color:       dsp.color,
-			   opacity:	dsp.opacity,
-			   transparent: true});
+    if(Boolean(self._config.anatomy_surfaces) &&
+       this._isArray(self._config.anatomy_surfaces) &&
+       (self._config.anatomy_surfaces.length > 0)) {
+      for(let i = 0, l = self._config.anatomy_surfaces.length; i < l; ++i) {
+        let anat = self._config.anatomy_surfaces[i];
+	let dsp = anat.display_props;
+	this._ren.addModel({name:       self.getAnatomyName(anat.id),
+			    path:       anat.filepath + '/' + anat.filename,
+			    color:      dsp.color,
+			    opacity:	dsp.opacity,
+			    transparent: true});
       }
     }
-    this.ren.addModel({name:        'disc',
+    let dsc = self._config.disc;
+    let dsp = dsc.display_props;
+    this._ren.addModel({name:       self.getDiscName(),
                        mode:        MARenderMode.SHAPE,
 		       style:       MARenderShape.DISC,
-		       color:       self.config.disc.color,
-		       size:        self.config.disc.radius,
-		       extrude:     self.config.disc.thickness});
-    for(let i = 0, l = self.config.paths.length; i < l; ++i) {
-      let path = self.config.paths[i];
-      let dsp = path.display_prop;
-      this.ren.addModel({name:        'path-' + i.toString(),
+		       color:       dsp.color,
+		       size:        dsp.radius,
+		       extrude:     dsp.thickness});
+    for(let i = 0, l = self._config.paths.length; i < l; ++i) {
+      let pth = self._config.paths[i];
+      let dsp = pth.display_props;
+      this._ren.addModel({name:       self.getPathName(pth.id),
                          mode:        MARenderMode.PATH,
 		         color:       dsp.color,
-		         linewidth:   dsp.width,
-		         vertices:    path.points,
-		         tangents:    path.tangents});
+		         linewidth:   dsp.line_width,
+		         vertices:    pth.points,
+		         tangents:    pth.tangents});
     }
-    let lof = self.config.display_prop.label_offset;
+    let lof = self._config.display_props.label_offset;
     lof = new THREE.Vector3(lof[0], lof[1], lof[2]);
-    for(let i = 0, l = self.config.landmarks.length; i < l; ++i) {
-      let lmk = self.config.landmarks[i];
-      let lmn = lmk.id;
+    for(let i = 0, l = self._config.landmarks.length; i < l; ++i) {
+      let lmk = self._config.landmarks[i];
       for(let i = 0, l = lmk.paths.length; i < l; ++i) {
-	let pas = self.config.paths[lmk.paths[i]].points[lmk.indices[i]];
+	let lpi = self._config.pathIdToIdx[lmk.paths[i]];
+	let pas = self._config.paths[lpi].points[lmk.position[i]];
 	let pos = new THREE.Vector3(pas[0], pas[1], pas[2]);
-	self.ren.addModel({name: 'lmkm-' + lmn,
+	self._ren.addModel({name: self.getLandmarkName(lmk.id),
 		           mode:  MARenderMode.MARKER,
 		           position: pos});
-	self.ren.addModel({name: 'lmkl-' + lmn,
+	self._ren.addModel({name: self.getLandmarkLblName(lmk.id),
 		           mode:  MARenderMode.LABEL,
-		           text:  lmk.display_text,
+		           text:  lmk.anatomy[0].abbreviated_name,
 		           position: pos.add(lof)});
       }
     }
@@ -167,14 +182,14 @@ GCA3DRenderer = function(wind, cont, pick) {
    * 				  - up -       up vector of the camera
    */
   this.setView = function() {
-    let dsp = self.config.display_prop;
-    let v = dsp.views[dsp.default_view];
+    let dsp = self._config.display_props;
+    let v = dsp.model_views[dsp.viewTypeToIdx[dsp.default_view]];
     let c = new THREE.Vector3(v.centre[0], v.centre[1], v.centre[2]);
     let p = new THREE.Vector3(v.cam_pos[0], v.cam_pos[1], v.cam_pos[2]);
     let u  = new THREE.Vector3(v.up[0],  v.up[1],  v.up[2]);
-    self.ren.setCamera(c, v.near, v.far, p);
-    self.ren.setHome(p, u);
-    self.ren.goHome();
+    self._ren.setCamera(c, v.near, v.far, p);
+    self._ren.setHome(p, u);
+    self._ren.goHome();
   }
 
   /*!
@@ -187,18 +202,18 @@ GCA3DRenderer = function(wind, cont, pick) {
    */
   this.addMarker = function(name, pos, col, txt) {
     pos = new THREE.Vector3(pos[0], pos[1], pos[2]);
-    self.ren.addModel({name: 'mrkm-' + name,
-                       mode:  MARenderMode.MARKER,
-		       color: col,
-                       position: pos});
+    self._ren.addModel({name: self.getMarkerName(name),
+                        mode:  MARenderMode.MARKER,
+		        color: col,
+                        position: pos});
     if(txt) {
-      let dp = self.config.display_prop;
+      let dp = self._config.display_props;
       let lof = new THREE.Vector3(dp.label_offset[0], dp.label_offset[1],
                                   dp.label_offset[2]);
-      self.ren.addModel({name: 'mrkl-' + name,
-                         mode:  MARenderMode.LABEL,
-                         text:  txt,
-                         position: pos.add(lof)});
+      self._ren.addModel({name: self.getMarkerLblName(name),
+                          mode:  MARenderMode.LABEL,
+                          text:  txt,
+                          position: pos.add(lof)});
     }
   }
 
@@ -209,8 +224,8 @@ GCA3DRenderer = function(wind, cont, pick) {
    * \param	Reference name string of the marker.
    */
   this.removeMarker = function(name) {
-    self.ren.removeModel('mrkm-' + name);
-    self.ren.removeModel('mrkl-' + name);
+    self._ren.removeModel(self.getMarkerName(name));
+    self._ren.removeModel(self.getMarkerLblName(name));
   }
 
   /*!
@@ -247,16 +262,16 @@ GCA3DRenderer = function(wind, cont, pick) {
    * \param	rad		New disc radius.
    */
   this.setDiscRadius = function(rad) {
-    self.config.disc.radius = rad;
-    let pd = self.config.paths[self.curPath];
-    let vtx = pd.points[self.curPathIdx];
-    let tan = pd.tangents[self.curPathIdx];
-    let ext = self.config.disc.thickness;
+    self._config.disc.radius = rad;
+    let pd = self._config.paths[self._curPath];
+    let vtx = pd.points[self._curPathIdx];
+    let tan = pd.tangents[self._curPathIdx];
+    let ext = self._config.disc.thickness;
     if(!Boolean(ext)) {
       ext = 1.0;
     }
-    self.ren.updateModel({name: 'disc',
-	size: self.config.disc.radius,
+    self._ren.updateModel({name: self.getDiscName(),
+	size: self._config.disc.radius,
 	position: new THREE.Vector3(vtx[0], vtx[1], vtx[2]),
 	normal: new THREE.Vector3(tan[0], tan[1], tan[2]),
 	extrude: ext});
@@ -267,7 +282,7 @@ GCA3DRenderer = function(wind, cont, pick) {
    * \brief	Makes render live.
    */
   this.animate = function() {
-    self.ren.animate();
+    self._ren.animate();
   }
 
   /*!
@@ -288,7 +303,7 @@ GCA3DRenderer = function(wind, cont, pick) {
    */
   this.getPosition = function(path, path_idx) {
     let rtn = undefined;
-    let landmarks = self.config.landmarks;
+    let landmarks = self._config.landmarks;
     let lmks = [undefined, undefined];
     let pi = [-1, -1];
     /* Find lower and upper containing landmarks of path_idx. */
@@ -303,14 +318,14 @@ GCA3DRenderer = function(wind, cont, pick) {
 	}
       }
       if(pinp >= 0) {
-	if(lmk.indices[pinp] <= path_idx) {
+	if(lmk.position[pinp] <= path_idx) {
 	  if((lmks[0] === undefined) || (i > lmks[0]))
 	  {
 	    pi[0] = pinp;
 	    lmks[0] = i;
 	  }
 	}
-	if(lmk.indices[pinp] >= path_idx) {
+	if(lmk.position[pinp] >= path_idx) {
 	  if((lmks[1] === undefined) || (i < lmks[1]))
 	  {
 	    pi[1] = pinp;
@@ -320,8 +335,8 @@ GCA3DRenderer = function(wind, cont, pick) {
       }
     }
     if((lmks[0] !== undefined) && (lmks[1] !== undefined)) {
-      let p0 = landmarks[lmks[0]].indices[pi[0]];
-      let p1 = landmarks[lmks[1]].indices[pi[1]];
+      let p0 = landmarks[lmks[0]].position[pi[0]];
+      let p1 = landmarks[lmks[1]].position[pi[1]];
       rtn = [lmks[0], lmks[1], (path_idx - p0) / (p1 - p0)];
     }
     return(rtn);
@@ -334,17 +349,18 @@ GCA3DRenderer = function(wind, cont, pick) {
    */
   this.getSectionImage = function() {
     let img = undefined;
-    if(Boolean(self.config.section_files) &&
-       (self.config.section_files.length > self.curPath)) {
-      let template = self.config.section_files[self.curPath];
+    if(Boolean(self._config.section_files) &&
+       (self._config.section_files.length > self._curPath)) {
+      let sf = self._config.section_files[self._curPath];
+      let template = sf.filename;
       let rx = /%([0 ]?)(\d*)d/;
       let fmt = template.match(rx);
       let n = parseInt(fmt[2]) || 0;
-      let d = String(self.curPathIdx);
+      let d = String(self._curPathIdx);
       if(n > d.length) {
 	d = fmt[1].repeat(n - d.length) + d;
       }
-      img = template.replace(rx, d);
+      img = sf.filepath + '/' + template.replace(rx, d);
     }
     return(img);
   }
@@ -362,8 +378,8 @@ GCA3DRenderer = function(wind, cont, pick) {
   this.positionToPath = function(pos, tol) {
     let fnd = [0, 0, Number.MAX_VALUE];
     let pv = new THREE.Vector3(pos[0], pos[1], pos[2]);
-    for(let pi = 0; pi < self.config.paths.length; ++pi) {
-      let path = self.config.paths[pi];
+    for(let pi = 0; pi < self._config.paths.length; ++pi) {
+      let path = self._config.paths[pi];
       for(let pj = 0; pj < path.n; ++pj) {
         let pp = path.points[pj];
 	let d2 = pv.distanceToSquared(new THREE.Vector3(pp[0],pp[1],pp[2]));
@@ -382,7 +398,105 @@ GCA3DRenderer = function(wind, cont, pick) {
     return(fnd);
   }
 
+  /*
+   * \function	getReferenceName
+   * \return	Reference object name. Can be used to find/update reference
+   * 		object.
+   */
+  this.getReferenceName = function() {
+    let name = self.referenceNamePrefix + self.nameSep +
+               gcaRen._config.reference_surface.id;
+    return(name);
+  }
+
+  /*
+   * \function	getAnatomyName
+   * \return	Anatomy object name. Can be used to find/update anatomy
+   * 		object.
+   * \param	id		GCA anatomy id.
+   */
+  this.getAnatomyName = function(id) {
+    let name = self.anatomyNamePrefix + self.nameSep + id;
+    return(name);
+  }
+
+  /*
+   * \function	getDiscName
+   * \return	Disc object name. Can be used to find/update disc
+   * 		object.
+   */
+  this.getDiscName = function() {
+    let name = self.discNamePrefix;
+    return(name)
+  }
+
+  /*
+   * \function	getPathName
+   * \return	Path object name. Can be used to find/update path
+   * 		object.
+   * \param	id		GCA path id.
+   */
+  this.getPathName = function(id) {
+    let pix = self._config.pathIdToIdx[id];
+    let name = self.pathNamePrefix + self.nameSep + pix;
+    return(name);
+  }
+
+  /*
+   * \function	getLandmarkName
+   * \return	Landmark object name. Can be used to find/update landmark
+   * 		object.
+   * \param	id		GCA landmark id.
+   */
+  this.getLandmarkName = function(id) {
+    let name = self.landmarkNamePrefix + self.nameSep + id;
+    return(name);
+  }
+
+  /*
+   * \function	getLandmarkLblName
+   * \return	Landmark label object name. Can be used to find/update landmark
+   * 		label object.
+   * \param	id		GCA landmark id.
+   */
+  this.getLandmarkLblName = function(id) {
+    let name = self.landmarkNameLblPrefix + self.nameSep + id;
+    return(name);
+  }
+
+  /*
+   * \function	getMarkerName
+   * \return	Marker object name. Can be used to find/update marker
+   * 		object.
+   * \param	id		Marker id.
+   */
+  this.getMarkerName = function(id) {
+    let name = self.markerNamePrefix + self.nameSep + id;
+    return(name);
+  }
+
+  /*
+   * \function	getMarkerLblName
+   * \return	Marker label object name. Can be used to find/update marker
+   * 		label object.
+   * \param	id		GCA marker id.
+   */
+  this.getMarkerLblName = function(id) {
+    let name = self.markerNameLblPrefix + self.nameSep + id;
+    return(name);
+  }
+
   /* Support function below here. */
+
+  /*!
+   * \function  _isDefined
+   * \return    True of false.
+   * \brief     Test is given parameter is defined.
+   * \param     obj                     Given parameter.
+   */
+  this._isDefined = function(x) {
+    return(typeof x !== 'undefined');
+  }
 
   /*!
    * \function  _isArray
@@ -437,12 +551,11 @@ GCA3DRenderer = function(wind, cont, pick) {
    * \param	Given cfg	configuration.
    */
   this._setConfig = function(cfg) {
-    /* Sort landmarks by minimum path and then distance. */
-    cfg.landmarks.sort((a, b) => {
-				   return(a.indices[0] - b.indices[0]);
-			         });
-    /* Set the configuration. */
-    self.config = cfg;
+    self._config = cfg;
+    this._sortLandmarks(cfg);
+    this._findPaths();
+    this._findModelObjects();
+    this._findViews();
   }
 
   /*!
@@ -459,12 +572,97 @@ GCA3DRenderer = function(wind, cont, pick) {
      \endverbatim				  
    */
   this._loadPaths = function() {
-    for(let i = 0, l = self.config.paths.length; i < l; ++i) {
-      let path = self.config.paths[i];
-      let path_data = this._loadJson(path.file);
+    for(let i = 0, l = self._config.paths.length; i < l; ++i) {
+      let path = self._config.paths[i];
+      let path_data = this._loadJson(path.filepath + '/' +
+                                     path.spline_filename);
       path["n"] = path_data.n;
       path["points"] = path_data.points;
       path["tangents"] = path_data.tangents;
+    }
+  }
+
+  /*!
+   *
+   * \function	_sortLandmarks
+   * \brief	Sorts the landmarks in place) in the given configuration.
+   *  		This is done to ensure that landmarks are ordered by their
+   * 		position along (combined) paths.
+   */
+  this._sortLandmarks = function(cfg) {
+    cfg.landmarks.sort((a, b) => {
+      let cmp = a.position[0] - b.position[0];
+      return(cmp);
+    });
+  }
+
+  /*!
+   * \function  _findModelObjects
+   * \brief     Finds model objects and sets easily accessed entries
+   * 		in the config:
+   * 		  config.display_props     <- GLOBAL_DISPLAY_PROP
+   * 		  config.disc              <- DISC
+   * 		  config.reference_surface <- REFERENCE_SURFACES
+   * 		  config.anatomy_surfaces  <- [ANATOMY_SURFACES]
+   *            easily accessed in the config.
+   */
+  this._findModelObjects = function() {
+    let cfg = self._config;
+    for(const i in cfg.model_objects) {
+      let mo = cfg.model_objects[i];
+      if(this._isDefined(mo) && this._isDefined(mo.group)) {
+        switch(mo.group) {
+	  case 'GLOBAL_DISPLAY_PROP':
+            cfg['display_props'] = mo.display_props;
+	    break;
+	  case 'DISC':
+            cfg['disc'] = mo;
+	    break;
+	  case 'SECTION_FILES':
+	    if(!this._isDefined(cfg.section_files)) {
+	      cfg['section_files'] = [];
+	    }
+	    let pi = cfg.pathIdToIdx[mo.path];
+	    cfg.section_files[pi] = mo;
+	    break;
+	  case 'REFERENCE_SURFACES':
+	    cfg['reference_surface'] = mo;
+	    break;
+	  case 'ANATOMY_SURFACES':
+	    if(!this._isDefined(cfg.anatomy_surfaces)) {
+	      cfg.anatomy_surfaces = [];
+	    }
+	    cfg.anatomy_surfaces.push(mo);
+	    break;
+	  default:
+	    break;
+        }
+      }
+    }
+  }
+
+  /*!
+   * \function	_findPaths
+   * \brief	Build a look up table from path ids to path indices.
+   */
+  this._findPaths = function() {
+    self._config['pathIdToIdx'] = [];
+    for(let i = 0; i < self._config.paths.length; ++i) {
+      let p = self._config.paths[i];
+      self._config.pathIdToIdx[p.id] = i;
+    }
+  }
+
+  /*!
+   * \function	_findViews
+   * \brief	Build a look up table from view types to view indices.
+   */
+  this._findViews = function() {
+    let gdp = self._config.display_props;
+    gdp['viewTypeToIdx'] = [];
+    for(const i in gdp.model_views) {
+      let v = gdp.model_views[i];
+      gdp.viewTypeToIdx[v.type] = i;
     }
   }
 
@@ -480,15 +678,16 @@ GCA3DRenderer = function(wind, cont, pick) {
    */
   this._indexOnPath = function(lmid0, lmid1, dst) {
     let path = undefined;
+    let path_idx = undefined;
     let index = undefined;
     let mi = [-1, -1];
     let mpi = [-1, -1];
     let mp = [[], []];
     let li = 0;
-    let ll = self.config.landmarks.length;
+    let ll = self._config.landmarks.length;
     // Find landmarks and paths with matching ids
     while(((mi[0] < 0) || (mi[1] < 0)) && li < ll) {
-      let lmk = self.config.landmarks[li];
+      let lmk = self._config.landmarks[li];
       if(lmk.id === lmid0) {
 	mi[0] = li;
 	mp[0] = lmk.paths;
@@ -505,25 +704,26 @@ GCA3DRenderer = function(wind, cont, pick) {
       li = 0;
       ll = mp[0].length;
       let jl = mp[1].length;
-      while((path === undefined) && li < ll) {
+      while((path_idx === undefined) && li < ll) {
 	let ji = 0;
 	for(let ji = 0; ji < jl; ++ji) {
 	  if(mp[0][li] === mp[1][ji]) {
 	    mpi[0] = li;
 	    mpi[1] = ji;
 	    path = mp[0][li];
+	    path_idx = self._config.pathIdToIdx[path];
 	  }
 	}
         ++li;
       }
-      if(path !== undefined) {
-        let i0 = self.config.landmarks[mi[0]].indices[mpi[0]];
-        let i1 = self.config.landmarks[mi[1]].indices[mpi[1]];
+      if(path_idx !== undefined) {
+        let i0 = self._config.landmarks[mi[0]].position[mpi[0]];
+        let i1 = self._config.landmarks[mi[1]].position[mpi[1]];
 	index = i0 + Math.floor((i1 - i0) * dst);
-	index = this._clamp(index, 0, self.config.paths[path].n - 1);
+	index = this._clamp(index, 0, self._config.paths[path_idx].n - 1);
       }
     }
-    return([path, index]);
+    return([path_idx, index]);
   }
 
   /*!
@@ -531,18 +731,18 @@ GCA3DRenderer = function(wind, cont, pick) {
    * \brief	Updates the colon colour(s) and opacity.
    */
   this._updateColon = function() {
-    let scene = self.ren.scene;
+    let scene = self._ren.scene;
     for(let i = 0, l = scene.children.length; i < l; ++i) {
       let child = scene.children[i];
       if(child.name.substring(0, 7) === 'anatomy') {
         let s = child.name.split('_');
 	if(s.length > 1) {
 	  let idx = parseInt(s[1]);
-	  if((idx >= 0) && (idx < self.config.anatomy_surfaces.length)) {
-	    let anat = self.config.anatomy_surfaces[idx];
-	    self.ren.updateModel({name: child.name,
-				  color: anat.color,
-				  opacity: anat.opacity});
+	  if((idx >= 0) && (idx < self._config.anatomy_surfaces.length)) {
+	    let anat = self._config.anatomy_surfaces[idx];
+	    self._ren.updateModel({name: child.name,
+				   color: anat.color,
+				   opacity: anat.opacity});
 	  }
         }
       }
@@ -559,37 +759,37 @@ GCA3DRenderer = function(wind, cont, pick) {
    * \param	roiIdxEnd	Index of position on path for end of ROI.
    */
   this._updatePosition = function(path, pathIdx, roiIdxSrt, roiIdxEnd) {
-    self.curPath = path;
-    self.curPathIdx = pathIdx;
-    self.roiIdx = [roiIdxSrt, roiIdxEnd];
+    self._curPath = path;
+    self._curPathIdx = pathIdx;
+    self._roiIdx = [roiIdxSrt, roiIdxEnd];
     //
-    let pd = self.config.paths[self.curPath];
+    let pd = self._config.paths[self._curPath];
     // Update disc
-    let name = 'disc';
-    let vtx = pd.points[self.curPathIdx];
-    let tan = pd.tangents[self.curPathIdx];
-    let ext = self.config.disc.thickness;
+    let name = self.getDiscName();
+    let vtx = pd.points[self._curPathIdx];
+    let tan = pd.tangents[self._curPathIdx];
+    let ext = self._config.disc.display_props.thickness;
     if(!Boolean(ext)) {
       ext = 1.0;
     }
-    self.ren.updateModel({name: name,
-	size: self.config.disc.radius,
+    self._ren.updateModel({name: name,
+	size: self._config.disc.radius,
 	position: new THREE.Vector3(vtx[0], vtx[1], vtx[2]),
 	normal: new THREE.Vector3(tan[0], tan[1], tan[2]),
 	extrude: ext});
     // Update highlight
     name = 'highlight';
-    let vertices = pd.points.slice(self.roiIdx[0], self.roiIdx[1]);
-    let tangents = pd.tangents.slice(self.roiIdx[0], self.roiIdx[1]);
-    if(self.ren.getObjectByName(name)) {
-      self.ren.updateModel({name: name,
+    let vertices = pd.points.slice(self._roiIdx[0], self._roiIdx[1]);
+    let tangents = pd.tangents.slice(self._roiIdx[0], self._roiIdx[1]);
+    if(self._ren.getObjectByName(name)) {
+      self._ren.updateModel({name: name,
 	  vertices:   vertices,
 	  tangents:   tangents});
     } else {
-      self.ren.addModel({name:       name,
+      self._ren.addModel({name: name,
 	  mode:       MARenderMode.PATH,
-	  color:      self.config.display_prop.path_highligh_color,
-	  linewidth:  self.config.display_prop.path_highligh_width,
+	  color:      self._config.display_props.path_highlight_color,
+	  linewidth:  self._config.display_props.path_highlight_width,
 	  vertices:   vertices,
 	  tangents:   tangents});
     }
@@ -616,7 +816,7 @@ GCA3DRenderer = function(wind, cont, pick) {
    * \parma	ev		Event.
    */
   this._picker = function(ev) {
-    if(ev && ev.type && (ev.type === 'pick') && self.picker) {
+    if(ev && ev.type && (ev.type === 'pick') && self._picker) {
       /* Find hit on path object nearest to centroid of hits, but
        * any hit on a landmark or marker will take priority. */
       let idx = {pth: -1, mkm: -1};
@@ -629,12 +829,12 @@ GCA3DRenderer = function(wind, cont, pick) {
 	let hit = ev.hitlist[i];
 	obj = hit.object;
 	if(obj && obj.name) {
-	  tynm = obj.name.split('-');
+	  tynm = obj.name.split(self.nameSep);
 	  if(tynm.length > 1) {
 	    if(tynm.length > 2) {
-	      tynm = [tynm[0], tynm.slice(1).join('-')];
+	      tynm = [tynm[0], tynm.slice(1).join(self.nameSep)];
 	    }
-	    if(tynm[0] === 'path') {
+	    if(tynm[0] === self.pathNamePrefix) {
 	      if(idx.pth < 0) {
 		idx.pth = objA.length;
 		cnt.push(1);
@@ -646,10 +846,11 @@ GCA3DRenderer = function(wind, cont, pick) {
 		++(cnt[idx.pth]);
 		posA[idx.pth].add(hit.point);
 	      }
-	    } else if((tynm[0] === 'lmkm') || (tynm[0] === 'mrkm')) {
+	    } else if((tynm[0] === self.landmarkNamePrefix) ||
+	              (tynm[0] === self.markerNamePrefix)) {
 	      if(idx.mkm < 0) {
-		cnt.push(1);
 		idx.mkm = objA.length;
+		cnt.push(1);
 		objA.push(obj);
 		typA.push(tynm[0]);
 		namA.push(tynm[1]);
@@ -668,7 +869,7 @@ GCA3DRenderer = function(wind, cont, pick) {
 	  let p = posA[i].divideScalar(cnt[i]);
 	  posA[i] = [p.x, p.y, p.z];
 	}
-	self.picker(ev, obj, typA, namA, posA);
+	self._pickerFn(ev, objA, typA, namA, posA);
       }
     }
   }
