@@ -128,7 +128,7 @@ GCA3DRenderer = function(wind, cont, pick) {
     }
     let dsc = self._config.disc;
     let dsp = dsc.display_props;
-    this._ren.addModel({name:       self.getDiscName(),
+    this._ren.addModel({name:       self.getDiscName(dsc.id),
                        mode:        MARenderMode.SHAPE,
 		       style:       MARenderShape.DISC,
 		       color:       dsp.color,
@@ -146,11 +146,11 @@ GCA3DRenderer = function(wind, cont, pick) {
     }
     let lof = self._config.display_props.label_offset;
     lof = new THREE.Vector3(lof[0], lof[1], lof[2]);
-    for(let i = 0, l = self._config.landmarks.length; i < l; ++i) {
+    for(let i = 0; i < self._config.landmarks.length; ++i) {
       let lmk = self._config.landmarks[i];
-      for(let i = 0, l = lmk.paths.length; i < l; ++i) {
-	let lpi = self._config.pathIdToIdx[lmk.paths[i]];
-	let pas = self._config.paths[lpi].points[lmk.position[i]];
+      for(let j = 0; j < lmk.paths.length; ++j) {
+	let lpi = self._config.pathIdToIdx[lmk.paths[j]];
+	let pas = self._config.paths[lpi].points[lmk.position[j]];
 	let pos = new THREE.Vector3(pas[0], pas[1], pas[2]);
 	self._ren.addModel({name: self.getLandmarkName(lmk.id),
 		           mode:  MARenderMode.MARKER,
@@ -266,15 +266,16 @@ GCA3DRenderer = function(wind, cont, pick) {
    * \param	rad		New disc radius.
    */
   this.setDiscRadius = function(rad) {
-    self._config.disc.radius = rad;
+    let dsc = self._config.disc;
+    dsc.radius = rad;
     let pd = self._config.paths[self._curPath];
     let vtx = pd.points[self._curPathIdx];
     let tan = pd.tangents[self._curPathIdx];
-    let ext = self._config.disc.thickness;
+    let ext = dsc.thickness;
     if(!Boolean(ext)) {
       ext = 1.0;
     }
-    self._ren.updateModel({name: self.getDiscName(),
+    self._ren.updateModel({name: self.getDiscName(dsc.id),
 	size: self._config.disc.radius,
 	position: new THREE.Vector3(vtx[0], vtx[1], vtx[2]),
 	normal: new THREE.Vector3(tan[0], tan[1], tan[2]),
@@ -402,37 +403,8 @@ GCA3DRenderer = function(wind, cont, pick) {
     return(fnd);
   }
 
-  /*!
-   * \function	_baryCoords
-   * \return	Barycentric coordinates of the given point.
-   * \brief	Computes the barycentric coordinates of the given point.
-   * \param	t		Array of the triangle vertex positions.
-   * \param	p		Point in triangle.
-   */
-  this._baryCoords = function(t, p) {
-    let b = undefined;
-    let t0 = t[0];
-    let v0 = new THREE.Vector3(t[1].x - t0.x, t[1].y - t0.y, t[1].z - t0.z);
-    let v1 = new THREE.Vector3(t[2].x - t0.x, t[2].y - t0.y, t[2].z - t0.z);
-    let v2 = new THREE.Vector3(p.x - t0.x,    p.y - t0.y,    p.z - t0.z);
-    let d00 = v0.dot(v0);
-    let d01 = v0.dot(v1);
-    let d11 = v1.dot(v1);
-    let d20 = v2.dot(v0);
-    let d21 = v2.dot(v1);
-    let d = d00 * d11 - d01 * d01;
-    if(d > 0) {
-      d = 1.0 / d;
-      b = new Array(3);
-      b[1] = d * (d11 * d20 - d01 * d21);
-      b[2] = d * (d00 * d21 - d01 * d20);
-      b[0] = 1.0 - b[1] - b[2];
-    }
-    return(b);
-  }
-
-  /* \function	getAnatomyConfig
-   * \return	Anatomy config or undefined if the id is not valid.
+ /*! \function	getAnatomyConfig
+   *  \return	Anatomy config or undefined if the id is not valid.
    * \brief	Gets the anatomy configutation given an anatomy id.
    * \param	id		GCA anatomy id.
   */
@@ -474,9 +446,10 @@ GCA3DRenderer = function(wind, cont, pick) {
    * \function	getDiscName
    * \return	Disc object name. Can be used to find/update disc
    * 		object.
+   * \param	id		GCA anatomy id.
    */
-  this.getDiscName = function() {
-    let name = self.discNamePrefix;
+  this.getDiscName = function(id) {
+    let name = self.discNamePrefix + self.nameSep + id;
     return(name)
   }
 
@@ -536,6 +509,36 @@ GCA3DRenderer = function(wind, cont, pick) {
     return(name);
   }
 
+  /*!
+   * \function  findDispObj
+   * \return    Array of display group and display object or array with
+   *            display object undefined if not found.
+   * \brief     Finds the first display object which has the same GCA group
+   *            and GCA id. If the GCA id is undefined then the first
+   *            object with matching GCA group is found.
+   * \param     gca_grp GCA group of the object.
+   * \param     gca_id  GCA id of the object.
+   */
+  this.findDispObj = function(gca_grp, gca_id) {
+    return(this._findDispObjs(gca_grp, gca_id, false));
+  }
+
+  /*!
+   * \function  findAllDispObj
+   * \return    Array of arrays, with each inner array being the display
+   *            group and display object found. If no matching objects are
+   *            found then an empty array is returned.
+   * \brief     Finds all display objects which have the same GCA group
+   *            and / or GCA id. If the GCA group is undefined then all
+   *            groups are searched, similarly if the GCA id is undefined
+   *            then all objects within the group(s) are found.
+   * \param     gca_grp GCA group of the object.
+   * \param     gca_id  GCA id of the object.
+   */
+  this.findAllDispObj = function(gca_grp, gca_id) {
+    return(this._findDispObjs(gca_grp, gca_id, true));
+  }
+
   /* Support function below here. */
 
   /*!
@@ -579,6 +582,35 @@ GCA3DRenderer = function(wind, cont, pick) {
   }
 
   /*!
+   * \function	_baryCoords
+   * \return	Barycentric coordinates of the given point.
+   * \brief	Computes the barycentric coordinates of the given point.
+   * \param	t		Array of the triangle vertex positions.
+   * \param	p		Point in triangle.
+   */
+  this._baryCoords = function(t, p) {
+    let b = undefined;
+    let t0 = t[0];
+    let v0 = new THREE.Vector3(t[1].x - t0.x, t[1].y - t0.y, t[1].z - t0.z);
+    let v1 = new THREE.Vector3(t[2].x - t0.x, t[2].y - t0.y, t[2].z - t0.z);
+    let v2 = new THREE.Vector3(p.x - t0.x,    p.y - t0.y,    p.z - t0.z);
+    let d00 = v0.dot(v0);
+    let d01 = v0.dot(v1);
+    let d11 = v1.dot(v1);
+    let d20 = v2.dot(v0);
+    let d21 = v2.dot(v1);
+    let d = d00 * d11 - d01 * d01;
+    if(d > 0) {
+      d = 1.0 / d;
+      b = new Array(3);
+      b[1] = d * (d11 * d20 - d01 * d21);
+      b[2] = d * (d00 * d21 - d01 * d20);
+      b[0] = 1.0 - b[1] - b[2];
+    }
+    return(b);
+  }
+
+  /*!
    * \function	_loadJson
    * \return	Object loaded.
    * \brief	Loads the JSON file at the given URL.
@@ -602,10 +634,10 @@ GCA3DRenderer = function(wind, cont, pick) {
    */
   this._setConfig = function(cfg) {
     self._config = cfg;
-    this._sortLandmarks(cfg);
-    this._findPaths();
-    this._findModelObjects();
-    this._findViews();
+    this._sortCfgLandmarks(cfg);
+    this._findCfgPaths();
+    this._findCfgModelObjects();
+    this._findCfgViews();
   }
 
   /*!
@@ -634,12 +666,12 @@ GCA3DRenderer = function(wind, cont, pick) {
 
   /*!
    *
-   * \function	_sortLandmarks
+   * \function	_sortCfgLandmarks
    * \brief	Sorts the landmarks in place) in the given configuration.
    *  		This is done to ensure that landmarks are ordered by their
    * 		position along (combined) paths.
    */
-  this._sortLandmarks = function(cfg) {
+  this._sortCfgLandmarks = function(cfg) {
     cfg.landmarks.sort((a, b) => {
       let cmp = a.position[0] - b.position[0];
       return(cmp);
@@ -647,7 +679,7 @@ GCA3DRenderer = function(wind, cont, pick) {
   }
 
   /*!
-   * \function  _findModelObjects
+   * \function  _findCfgModelObjects
    * \brief     Finds model objects and sets easily accessed entries
    * 		in the config:
    * 		  config.display_props     <- GLOBAL_DISPLAY_PROP
@@ -656,7 +688,7 @@ GCA3DRenderer = function(wind, cont, pick) {
    * 		  config.anatomy_surfaces  <- [ANATOMY_SURFACES]
    *            easily accessed in the config.
    */
-  this._findModelObjects = function() {
+  this._findCfgModelObjects = function() {
     let cfg = self._config;
     for(const i in cfg.model_objects) {
       let mo = cfg.model_objects[i];
@@ -692,10 +724,10 @@ GCA3DRenderer = function(wind, cont, pick) {
   }
 
   /*!
-   * \function	_findPaths
+   * \function	_findCfgPaths
    * \brief	Build a look up table from path ids to path indices.
    */
-  this._findPaths = function() {
+  this._findCfgPaths = function() {
     self._config['pathIdToIdx'] = [];
     for(let i = 0; i < self._config.paths.length; ++i) {
       let p = self._config.paths[i];
@@ -704,10 +736,10 @@ GCA3DRenderer = function(wind, cont, pick) {
   }
 
   /*!
-   * \function	_findViews
+   * \function	_findCfgViews
    * \brief	Build a look up table from view types to view indices.
    */
-  this._findViews = function() {
+  this._findCfgViews = function() {
     let gdp = self._config.display_props;
     gdp['viewTypeToIdx'] = [];
     for(const i in gdp.model_views) {
@@ -815,15 +847,16 @@ GCA3DRenderer = function(wind, cont, pick) {
     //
     let pd = self._config.paths[self._curPath];
     // Update disc
-    let name = self.getDiscName();
+    let dsc = self._config.disc;
+    let name = self.getDiscName(dsc.id);
     let vtx = pd.points[self._curPathIdx];
     let tan = pd.tangents[self._curPathIdx];
-    let ext = self._config.disc.display_props.thickness;
+    let ext = dsc.display_props.thickness;
     if(!Boolean(ext)) {
       ext = 1.0;
     }
     self._ren.updateModel({name: name,
-	size: self._config.disc.radius,
+	size: dsc.radius,
 	position: new THREE.Vector3(vtx[0], vtx[1], vtx[2]),
 	normal: new THREE.Vector3(tan[0], tan[1], tan[2]),
 	extrude: ext});
@@ -843,6 +876,73 @@ GCA3DRenderer = function(wind, cont, pick) {
 	  vertices:   vertices,
 	  tangents:   tangents});
     }
+  }
+
+  /*!
+   * \function  _findDispObjs
+   * \return    Array of display group and display object or array of arrays,
+   * 		with each inner array being the display group and display
+   * 		object found. If no matching objects are found then an empty
+   * 		array is returned.
+   * \brief     Finds either the first or all display objects which have the
+   * 		same GCA group and / or GCA id. If the GCA group is undefined
+   * 		then all groups are searched, similarly if the GCA id is
+   * 		undefined then all objects within the group(s) are found.
+   * \param     gca_grp GCA group of the object.
+   * \param     gca_id  GCA id of the object.
+   */
+  this._findDispObjs = function(gca_grp, gca_id, all) {
+    let objs = [];
+    let scene = self._ren.scene;
+    for(let i = 0, l = scene.children.length; i < l; ++i) {
+      let grp = undefined;
+      let id = undefined;
+      let obj = scene.children[i];
+      let tynm = obj.name.split(self.nameSep);
+      if(tynm.length > 1) {
+	switch(tynm[0]) {
+          case this.referenceNamePrefix:
+	    grp = 'REFERENCE_SURFACES';
+	    id = tynm[1];
+	    break;
+          case this.anatomyNamePrefix:
+	    grp = 'ANATOMY_SURFACES';
+	    id = tynm[1];
+	    break;
+          case this.discNamePrefix:
+	    grp = 'DISC';
+            id = tynm[1];
+            break;
+          case this.pathNamePrefix:
+	    grp = 'PATHS';
+	    id = tynm[1];
+	    break;
+          case this.landmarkNamePrefix:
+          case this.landmarkNameLblPrefix:
+	    grp = 'LANDMARKS';
+	    id = tynm[1];
+	    break;
+          case this.markerNamePrefix:
+          case this.markerNameLblPrefix:
+	    grp = 'MARKERS';
+	    id = tynm[1];
+	  default:
+	    break;
+	}
+      }
+      if((!this._isDefined(gca_grp) ||
+          (this._isDefined(grp) && (gca_grp == grp))) &&
+         (!this._isDefined(gca_id) ||
+          (this._isDefined(id) && (gca_id == id)))) {
+	if(all) {
+	  objs.push([grp, obj]);
+	} else {
+	  objs = [grp, obj];
+          break;
+	}
+      }
+    }
+    return(objs);
   }
 
   /*!
