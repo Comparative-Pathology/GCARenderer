@@ -46,7 +46,7 @@ GCA3DRenderer = function(wind, cont, pick) {
   var self = this;
   this.type = 'GCA3DRenderer';
   this._config = undefined;
-  Object.defineProperty(self, 'version', {value: '0.1.0', writable: false});
+  Object.defineProperty(self, 'version', {value: '1.0.0', writable: false});
   this._pickerFn = pick;
   this._curPath = 0;	   	// Current path
   this._curPathIdx = 0;     	// Index of position on current path
@@ -120,6 +120,10 @@ GCA3DRenderer = function(wind, cont, pick) {
 			    color:      dsp.color,
 			    opacity:	dsp.opacity,
 			    transparent: true});
+        if(this._isDefined(anat.map_filename)) {
+	  anat['mapping'] = this._loadJson(anat.filepath + '/' +
+	                                   anat.map_filename);
+	}
       }
     }
     let dsc = self._config.disc;
@@ -218,7 +222,7 @@ GCA3DRenderer = function(wind, cont, pick) {
   }
 
   /*!
-   * \function removeMarker
+   * \function 
    * \brief	Removes the marker (and it's optional text label) with the
    * 		given reference name.
    * \param	Reference name string of the marker.
@@ -396,6 +400,52 @@ GCA3DRenderer = function(wind, cont, pick) {
       fnd = undefined;
     }
     return(fnd);
+  }
+
+  /*!
+   * \function	_baryCoords
+   * \return	Barycentric coordinates of the given point.
+   * \brief	Computes the barycentric coordinates of the given point.
+   * \param	t		Array of the triangle vertex positions.
+   * \param	p		Point in triangle.
+   */
+  this._baryCoords = function(t, p) {
+    let b = undefined;
+    let t0 = t[0];
+    let v0 = new THREE.Vector3(t[1].x - t0.x, t[1].y - t0.y, t[1].z - t0.z);
+    let v1 = new THREE.Vector3(t[2].x - t0.x, t[2].y - t0.y, t[2].z - t0.z);
+    let v2 = new THREE.Vector3(p.x - t0.x,    p.y - t0.y,    p.z - t0.z);
+    let d00 = v0.dot(v0);
+    let d01 = v0.dot(v1);
+    let d11 = v1.dot(v1);
+    let d20 = v2.dot(v0);
+    let d21 = v2.dot(v1);
+    let d = d00 * d11 - d01 * d01;
+    if(d > 0) {
+      d = 1.0 / d;
+      b = new Array(3);
+      b[1] = d * (d11 * d20 - d01 * d21);
+      b[2] = d * (d00 * d21 - d01 * d20);
+      b[0] = 1.0 - b[1] - b[2];
+    }
+    return(b);
+  }
+
+  /* \function	getAnatomyConfig
+   * \return	Anatomy config or undefined if the id is not valid.
+   * \brief	Gets the anatomy configutation given an anatomy id.
+   * \param	id		GCA anatomy id.
+  */
+  this.getAnatomyConfig = function(id) {
+    let an = undefined;
+    let all_an = self._config.anatomy_surfaces;
+    for(let i = 0; i <  all_an.length; ++i) {
+      if(all_an[i].id === id) {
+        an = all_an[i];
+	break;
+      }
+    }
+    return(an);
   }
 
   /*
@@ -819,12 +869,13 @@ GCA3DRenderer = function(wind, cont, pick) {
     if(ev && ev.type && (ev.type === 'pick') && self._picker) {
       /* Find hit on path object nearest to centroid of hits, but
        * any hit on a landmark or marker will take priority. */
-      let idx = {pth: -1, mkm: -1};
+      let idx = {pth: -1, mkm: -1, ana: -1};
       let cnt = [];
       let objA = [];
       let typA = [];
       let namA = [];
       let posA = [];
+      let triA = [];
       for(let i = 0, l = ev.hitlist.length; i < l; ++i) {
 	let hit = ev.hitlist[i];
 	obj = hit.object;
@@ -842,6 +893,7 @@ GCA3DRenderer = function(wind, cont, pick) {
 		typA.push(tynm[0]);
 		namA.push(tynm[1]);
 		posA.push(hit.point);
+		triA.push(0);
 	      } else if(tynm[1] === namA[idx.pth]) {
 		++(cnt[idx.pth]);
 		posA[idx.pth].add(hit.point);
@@ -855,19 +907,58 @@ GCA3DRenderer = function(wind, cont, pick) {
 		typA.push(tynm[0]);
 		namA.push(tynm[1]);
 		posA.push(hit.point);
+		triA.push(0);
 	      } else if((tynm[0] === typA[idx.pth]) &&
 		        (tynm[1] === namA[idx.pth])){
 		++(cnt[idx.pth]);
 		posA[idx.pth].add(hit.point);
 	      }
+	    } else if(tynm[0] === self.anatomyNamePrefix) {
+	      if(idx.ana < 0) {
+	        idx.ana  = objA.length;
+                cnt.push(1);
+		objA.push(obj);
+		typA.push(tynm[0]);
+		namA.push(tynm[1]);
+		posA.push(hit.point);
+		triA.push(hit.faceIndex);
+              }
 	    }
 	  }
 	}
       }
       if(objA.length > 0) {
 	for(let i = 0; i < objA.length; ++i) {
-	  let p = posA[i].divideScalar(cnt[i]);
-	  posA[i] = [p.x, p.y, p.z];
+	  if(typA[i] === self.anatomyNamePrefix) {
+	    /* Map anatomy surface hit to path if possible. */
+	    let g = objA[i].geometry;
+	    let an = self.getAnatomyConfig(namA[i]);
+	    if(self._isDefined(an) && self._isDefined(an.mapping) &&
+	       self._isDefined(g.index)  &&
+	       self._isDefined(g.attributes.position)){
+	      let t = triA[i] * 3;
+	      let ti = [g.index.array[t], g.index.array[t + 1],
+	                g.index.array[t + 2]];
+	      let p = g.attributes.position.array;
+	      let tv = new Array(3);
+	      let mp = new Array(3);
+	      for(j = 0; j < 3; ++j) {
+		v = ti[j] * 3;
+		mp[j] = an.mapping[ti[i]];
+	        tv[j] = new THREE.Vector3(p[v], p[v + 1], p[v + 2]);
+	      }
+	      // Do barycentric interpolation in triangle
+	      tw = self._baryCoords(tv, posA[i]);
+	      pi = Math.floor(mp[0] * tw[0] + mp[1] * tw[1] + mp[2] * tw[2]);
+	      // Compute path coordinates
+	      let path = self._config.paths[self._curPath];
+	      pi = self._clamp(pi, 0, path.n - 1);
+	      posA[i] = path.points[pi];
+	    }
+	  } else {
+	    let p = posA[i].divideScalar(cnt[i]);
+	    posA[i] = [p.x, p.y, p.z];
+	  }
 	}
 	self._pickerFn(ev, objA, typA, namA, posA);
       }
