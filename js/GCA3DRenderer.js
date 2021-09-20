@@ -78,7 +78,6 @@ GCA3DRenderer = function(wind, cont, pick) {
     self._setConfig(cfg);
     this._loadPaths();
     this._ren.init();
-    this._ren.markerSizeSet(self._config.display_props.marker_size);
     if(!Boolean(self._config.display_props.pick_precision)) {
       self._config.display_props['pick_precision'] = 1.0;
     }
@@ -86,6 +85,15 @@ GCA3DRenderer = function(wind, cont, pick) {
         self._config.display_props.pick_precision;
     this._ren.win.addEventListener('click', this._ren._pick, false);
     this._ren.addEventListener('pick', self._picker, false);
+  }
+
+  /*!
+   * \function	getConfig
+   * \return	Config data structure.
+   * \brief	Gets config data structure.
+   */
+  this.getConfig = function() {
+    return(self._config);
   }
 
   /*!
@@ -267,16 +275,17 @@ GCA3DRenderer = function(wind, cont, pick) {
    */
   this.setDiscRadius = function(rad) {
     let dsc = self._config.disc;
-    dsc.radius = rad;
+    let dsp = dsc.display_props;
+    dsp.radius = rad;
     let pd = self._config.paths[self._curPath];
     let vtx = pd.points[self._curPathIdx];
     let tan = pd.tangents[self._curPathIdx];
-    let ext = dsc.thickness;
+    let ext = dsp.thickness;
     if(!Boolean(ext)) {
       ext = 1.0;
     }
     self._ren.updateModel({name: self.getDiscName(dsc.id),
-	size: self._config.disc.radius,
+	size: rad,
 	position: new THREE.Vector3(vtx[0], vtx[1], vtx[2]),
 	normal: new THREE.Vector3(tan[0], tan[1], tan[2]),
 	extrude: ext});
@@ -638,6 +647,7 @@ GCA3DRenderer = function(wind, cont, pick) {
     this._findCfgPaths();
     this._findCfgModelObjects();
     this._findCfgViews();
+    this._ren.markerSizeSet(self._config.display_props.marker_size);
   }
 
   /*!
@@ -848,15 +858,16 @@ GCA3DRenderer = function(wind, cont, pick) {
     let pd = self._config.paths[self._curPath];
     // Update disc
     let dsc = self._config.disc;
+    let dsp = dsc.display_props;
     let name = self.getDiscName(dsc.id);
     let vtx = pd.points[self._curPathIdx];
     let tan = pd.tangents[self._curPathIdx];
-    let ext = dsc.display_props.thickness;
+    let ext = dsp.thickness;
     if(!Boolean(ext)) {
       ext = 1.0;
     }
     self._ren.updateModel({name: name,
-	size: dsc.radius,
+	size: dsp.radius,
 	position: new THREE.Vector3(vtx[0], vtx[1], vtx[2]),
 	normal: new THREE.Vector3(tan[0], tan[1], tan[2]),
 	extrude: ext});
@@ -1054,12 +1065,26 @@ GCA3DRenderer = function(wind, cont, pick) {
 	      let path = self._config.paths[self._curPath];
 	      pi = self._clamp(pi, 0, path.n - 1);
 	      posA[i] = path.points[pi];
+	    } else {
+	      // Something wrong, eg no mapping for anatomy so flag for removal
+	      objA[i] = undefined;
 	    }
 	  } else {
 	    let p = posA[i].divideScalar(cnt[i]);
 	    posA[i] = [p.x, p.y, p.z];
 	  }
 	}
+	/* Remove and invalid hits, flagged bu undefined object */
+	for(let i = objA.length - 1; i >= 0; --i) {
+	  if(!self._isDefined(objA[i])) {
+            objA.splice(i, 1);
+	    typA.splice(i, 1);
+            namA.splice(i, 1);
+	    posA.splice(i, 1);
+	  }
+	}
+      }
+      if(objA.length > 0) {
 	self._pickerFn(ev, objA, typA, namA, posA);
       }
     }
