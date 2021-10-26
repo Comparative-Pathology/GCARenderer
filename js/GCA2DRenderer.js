@@ -1026,7 +1026,8 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
       }
       let x = s * self._canvas.width / 2;
       let y = s * self._canvas.height / 2;
-      self._canvas.zoomToPoint(new fabric.Point(x, y), s);
+      // self._canvas.zoomToPoint(new fabric.Point(x, y), s);
+      self._canvas.zoomToPoint(new fabric.Point(0, 0), s);
       if(self._debug) {
         console.log('DEBUG viewportTransform ' +
                     self._canvas.viewportTransform[0] + ' ' +
