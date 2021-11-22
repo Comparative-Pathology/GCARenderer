@@ -493,64 +493,73 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
     let dp = self._config.display_props;
     /* Setup model objects. */
     if(this._isDefined(self._config.model_objects)) {
-      for(im = 0; im < self._config.model_objects.length; ++im) {
-	let img = undefined;
-	let obj = self._config.model_objects[im];
-	let odp = obj.display_props;
-	switch(obj.group) {
-	  case 'REFERENCE_IMAGES':
-	    if(!this._isDefined(odp)) {
-	      obj['display_props'] = {};
-	    }
-	    if(!this._isDefined(odp.opacity)) {
-	      odp['opacity'] = 1.0;
-	    }
-	    if(!this._isDefined(odp.invert)) {
-	      odp['invert'] = false;
-	    }
-	    img = self._ref_image;
-	    img.set({
-	        opacity: odp.opacity,
-                selectable: false});
-	    img['gca_id'] = obj.id;
-            img['gca_group'] = obj.group;
-	    if(odp.invert) {
-	      let flt = new fabric.Image.filters.Invert();
-              img.filters.push(flt);
-	      img.applyFilters();
-	    }
-	    self._model_grp.add(img);
-	    self._canvas.moveTo(img, self._layers['REFERENCE_IMAGES']);
-	    self._mapGroupsGCAToDisp['REFERENCE_IMAGES'] = self._model_grp;
-	    break;
-	  case 'ANATOMY_IMAGES':
-	    img = self._anat_images[obj.id];
-	    if(this._isDefined(img)) {
-	      if(!this._isDefined(odp)) {
-	        obj['display_props'] = {};
-              }
-	      if(!this._isDefined(odp.opacity)) {
-	        odp['opacity'] = 1.0;
-              }
-	      if(!this._isDefined(odp.color)) {
-		odp['color'] = '0xffffff';
+      /* We're using alpha compositing to render the images, which is order
+       * dependant, so make sure the reference images are rendered first.
+       * Here we do this by running through the model objects twice. */
+      for(pass = 0; pass < 2; ++pass) {
+	for(im = 0; im < self._config.model_objects.length; ++im) {
+	  let img = undefined;
+	  let obj = self._config.model_objects[im];
+	  let odp = obj.display_props;
+	  switch(obj.group) {
+	    case 'REFERENCE_IMAGES':
+	      if(pass == 0) {
+		if(!this._isDefined(odp)) {
+		  obj['display_props'] = {};
+		}
+		if(!this._isDefined(odp.opacity)) {
+		  odp['opacity'] = 1.0;
+		}
+		if(!this._isDefined(odp.invert)) {
+		  odp['invert'] = false;
+		}
+		img = self._ref_image;
+		img.set({
+		    opacity: odp.opacity,
+		    selectable: false});
+		img['gca_id'] = obj.id;
+		img['gca_group'] = obj.group;
+		if(odp.invert) {
+		  let flt = new fabric.Image.filters.Invert();
+		  img.filters.push(flt);
+		  img.applyFilters();
+		}
+		self._model_grp.add(img);
+		self._canvas.moveTo(img, self._layers['REFERENCE_IMAGES']);
+		self._mapGroupsGCAToDisp['REFERENCE_IMAGES'] = self._model_grp;
+		}
+		break;
+	    case 'ANATOMY_IMAGES':
+	      if(pass != 0) {
+		img = self._anat_images[obj.id];
+		if(this._isDefined(img)) {
+		  if(!this._isDefined(odp)) {
+		    obj['display_props'] = {};
+		  }
+		  if(!this._isDefined(odp.opacity)) {
+		    odp['opacity'] = 1.0;
+		  }
+		  if(!this._isDefined(odp.color)) {
+		    odp['color'] = '0xffffff';
+		  }
+		  img.set({
+		      opacity: odp.opacity,
+		      selectable: false});
+		  let flt = new fabric.Image.filters.BlendColor({
+		      color: this._parseColor(odp['color']) });
+		  img.filters.push(flt);
+		  img.applyFilters();
+		  img['gca_id'] = obj.id;
+		  img['gca_group'] = obj.group;
+		  self._model_grp.add(img);
+		  self._canvas.moveTo(img, self._layers['ANATOMY_IMAGES']);
+		  self._mapGroupsGCAToDisp['ANATOMY_IMAGES'] = self._model_grp;
+		}
 	      }
-	      img.set({
-	          opacity: odp.opacity,
-                  selectable: false});
-	      let flt = new fabric.Image.filters.BlendColor({
-                  color: this._parseColor(odp['color']) });
-              img.filters.push(flt);
-	      img.applyFilters();
-	      img['gca_id'] = obj.id;
-              img['gca_group'] = obj.group;
-              self._model_grp.add(img);
-              self._canvas.moveTo(img, self._layers['ANATOMY_IMAGES']);
-	      self._mapGroupsGCAToDisp['ANATOMY_IMAGES'] = self._model_grp;
-	    }
-	    break;
-	  default:
-	    break;
+	      break;
+	    default:
+	      break;
+	  }
 	}
       }
     }
