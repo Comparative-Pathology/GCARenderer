@@ -46,7 +46,7 @@ GCA3DRenderer = function(wind, cont, pick) {
   var self = this;
   this.type = 'GCA3DRenderer';
   this._config = undefined;
-  Object.defineProperty(self, 'version', {value: '1.0.0', writable: false});
+  Object.defineProperty(self, 'version', {value: '1.1.0', writable: false});
   this._pickerFn = pick;
   this._curPath = 0;	   	// Current path
   this._curPathIdx = 0;     	// Index of position on current path
@@ -57,6 +57,7 @@ GCA3DRenderer = function(wind, cont, pick) {
   this.anatomyNamePrefix = 'ana';
   this.discNamePrefix = 'disc';
   this.pathNamePrefix = 'path';
+  this.trackNamePrefix = 'track';
   this.landmarkNamePrefix = 'lm';
   this.landmarkNameLblPrefix = 'll';
   this.markerNamePrefix = 'mm';
@@ -108,14 +109,18 @@ GCA3DRenderer = function(wind, cont, pick) {
    */
   this.addModels = function() {
     let name = undefined;
-    if(Boolean(self._config.reference_surface)) {
-      let ref = self._config.reference_surface;
-      let dsp = ref.display_props;
-      this._ren.addModel({name:        self.getReferenceName(),
-	     	          path:        ref.filepath + '/' + ref.filename,
-		          color:       dsp.color,
-		          opacity:     dsp.opacity,
-			  transparent: true});
+    if(Boolean(self._config.reference_surfaces) &&
+       this._isArray(self._config.reference_surfaces) &&
+       (self._config.reference_surfaces.length > 0)) {
+      for(let i = 0, l = self._config.reference_surfaces.length; i < l; ++i) {
+        let ref = self._config.reference_surfaces[i];
+	let dsp = ref.display_props;
+        this._ren.addModel({name:        self.getReferenceName() + String(i),
+	                    path:	 ref.filepath + '/' + ref.filename,
+			    color:	 dsp.color,
+			    opacity:	 dsp.opacity,
+			    transparent: true});
+      }
     }
     if(Boolean(self._config.anatomy_surfaces) &&
        this._isArray(self._config.anatomy_surfaces) &&
@@ -238,6 +243,70 @@ GCA3DRenderer = function(wind, cont, pick) {
   this.removeMarker = function(name) {
     self._ren.removeModel(self.getMarkerName(name));
     self._ren.removeModel(self.getMarkerLblName(name));
+  }
+
+  /*!
+   * \function	addTrack
+   * \brief	Adds a track (line parallel to a midline path).
+   * \param	name		Reference name string for the track.
+   * \param	path_id		Midline path id.
+   * \param	start_idx	Index along the path at which the track starts.
+   * \param	end_idx		Index along the path at which the track ends.
+   * \param	col		Colour for the track.
+   * \param	dist		Distance from the midline for the track.
+   * \param	ang		Angle for the track with respect to the
+   * 				midline's reference normal in radians.
+   */
+  this.addTrack = function(name, path_id, start_idx, end_idx, col, dist, ang) {
+    let path = undefined;
+    let path_idx = self._config.pathIdToIdx[path_id];
+    if(path_idx !== undefined) {
+      path = self._config.paths[path_idx];
+      if(start_idx > end_idx) {
+        let i = start_idx;
+	start_idx = end_idx;
+	end_idx = i;
+      }
+      if(start_idx < 0) {
+        start_idx = 0;
+      }
+      if(end_idx >= path.n) {
+        end_idx = path.n - 1;
+      }
+      let pts = [];
+      let tgt = [];
+      var cad = Math.cos(ang) * dist;
+      var sad = Math.sin(ang) * dist;
+      for(let i = start_idx; i <= end_idx; ++i) {
+        let pp = path.points[i];
+        let pr = path.normals[i];
+        let pt = path.tangents[i];
+	let ps = [(pt[1] * pr[2]) - (pr[1] * pt[2]),
+	          (pt[2] * pr[0]) - (pr[2] * pt[0]),
+		  (pt[0] * pr[1]) - (pr[0] * pt[1])];
+	pts.push([pp[0] + (cad * pr[0] + sad * ps[0]),
+	          pp[1] + (cad * pr[1] + sad * ps[1]),
+		  pp[2] + (cad * pr[2] + sad * ps[2])]);
+	tgt.push([pt[0], pt[1], pt[2]]);
+    	let m_name = self.getTrackName(name);
+	let dsp = path.display_props;
+	gcaRen._ren.addModel({name: m_name,
+		mode:		MARenderMode.PATH,
+		color:		col,
+		linewidth:	dsp.line_width,
+		vertices:	pts,
+		tangents:	tgt});
+      }
+    }
+  }
+
+  /*!
+   * \function 
+   * \brief	Removes the track with the given reference name.
+   * \param	name		Reference name string of the track.
+   */
+  this.removeTrack = function(name) {
+    self._ren.removeModel(self.getTrackName(name));
   }
 
   /*!
@@ -436,7 +505,7 @@ GCA3DRenderer = function(wind, cont, pick) {
    */
   this.getReferenceName = function() {
     let name = self.referenceNamePrefix + self.nameSep +
-               gcaRen._config.reference_surface.id;
+               gcaRen._config.reference_surfaces.id;
     return(name);
   }
 
@@ -515,6 +584,16 @@ GCA3DRenderer = function(wind, cont, pick) {
    */
   this.getMarkerLblName = function(id) {
     let name = self.markerNameLblPrefix + self.nameSep + id;
+    return(name);
+  }
+
+  /*!
+   * \function	getTrackName
+   * \return	Track object name. Can be used to find/update track object.
+   * \param	id		Track id.
+   */
+  this.getTrackName = function(id) {
+    let name = self.trackNamePrefix + self.nameSep + id;
     return(name);
   }
 
@@ -671,6 +750,9 @@ GCA3DRenderer = function(wind, cont, pick) {
       path["n"] = path_data.n;
       path["points"] = path_data.points;
       path["tangents"] = path_data.tangents;
+      if(path_data.normals !== undefined) {
+        path["normals"] = path_data.normals;
+      }
     }
   }
 
@@ -694,7 +776,7 @@ GCA3DRenderer = function(wind, cont, pick) {
    * 		in the config:
    * 		  config.display_props     <- GLOBAL_DISPLAY_PROP
    * 		  config.disc              <- DISC
-   * 		  config.reference_surface <- REFERENCE_SURFACES
+   * 		  config.reference_surfaces <- REFERENCE_SURFACES
    * 		  config.anatomy_surfaces  <- [ANATOMY_SURFACES]
    *            easily accessed in the config.
    */
@@ -718,7 +800,10 @@ GCA3DRenderer = function(wind, cont, pick) {
 	    cfg.section_files[pi] = mo;
 	    break;
 	  case 'REFERENCE_SURFACES':
-	    cfg['reference_surface'] = mo;
+	    if(!this._isDefined(cfg.reference_surfaces)) {
+	      cfg.reference_surfaces = [];
+	    }
+	    cfg.reference_surfaces.push(mo);
 	    break;
 	  case 'ANATOMY_SURFACES':
 	    if(!this._isDefined(cfg.anatomy_surfaces)) {
@@ -1074,7 +1159,7 @@ GCA3DRenderer = function(wind, cont, pick) {
 	    posA[i] = [p.x, p.y, p.z];
 	  }
 	}
-	/* Remove and invalid hits, flagged bu undefined object */
+	/* Remove and invalid hits, flagged but undefined object */
 	for(let i = objA.length - 1; i >= 0; --i) {
 	  if(!self._isDefined(objA[i])) {
             objA.splice(i, 1);
