@@ -288,15 +288,15 @@ GCA3DRenderer = function(wind, cont, pick) {
 	          pp[1] + (cad * pr[1] + sad * ps[1]),
 		  pp[2] + (cad * pr[2] + sad * ps[2])]);
 	tgt.push([pt[0], pt[1], pt[2]]);
-    	let m_name = self.getTrackName(name);
-	let dsp = path.display_props;
-	gcaRen._ren.addModel({name: m_name,
-		mode:		MARenderMode.PATH,
-		color:		col,
-		linewidth:	dsp.line_width,
-		vertices:	pts,
-		tangents:	tgt});
       }
+      let m_name = self.getTrackName(name);
+      let dsp = path.display_props;
+      gcaRen._ren.addModel({name: m_name,
+	      mode:		MARenderMode.PATH,
+	      color:		col,
+	      linewidth:	dsp.line_width,
+	      vertices:	pts,
+	      tangents:	tgt});
     }
   }
 
@@ -1013,6 +1013,10 @@ GCA3DRenderer = function(wind, cont, pick) {
 	    grp = 'PATHS';
 	    id = tynm[1];
 	    break;
+	  case this.trackNamePrefix:
+	    grp = 'TRACKS';
+            id = tynm[1];
+	    break;
           case this.landmarkNamePrefix:
           case this.landmarkNameLblPrefix:
 	    grp = 'LANDMARKS';
@@ -1065,7 +1069,7 @@ GCA3DRenderer = function(wind, cont, pick) {
     if(ev && ev.type && (ev.type === 'pick') && self._picker) {
       /* Find hit on path object nearest to centroid of hits, but
        * any hit on a landmark or marker will take priority. */
-      let idx = {pth: -1, mkm: -1, ana: -1};
+      let idx = {pth: -1, mkm: -1, ana: -1, trk: -1};
       let cnt = [];
       let objA = [];
       let typA = [];
@@ -1119,7 +1123,16 @@ GCA3DRenderer = function(wind, cont, pick) {
 		posA.push(hit.point);
 		triA.push(hit.faceIndex);
               }
-	    }
+	    } else if(tynm[0] === self.trackNamePrefix) {
+	      if(idx.trk < 0) {
+	        idx.trk  = objA.length;
+                cnt.push(1);
+		objA.push(obj);
+		typA.push(tynm[0]);
+		namA.push(tynm[1]);
+		posA.push(hit.point);
+              }
+            }
 	  }
 	}
       }
