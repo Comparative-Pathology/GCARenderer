@@ -46,7 +46,7 @@ GCA3DRenderer = function(wind, cont, pick) {
   var self = this;
   this.type = 'GCA3DRenderer';
   this._config = undefined;
-  Object.defineProperty(self, 'version', {value: '1.1.0', writable: false});
+  Object.defineProperty(self, 'version', {value: '1.1.1', writable: false});
   this._pickerFn = pick;
   this._curPath = 0;	   	// Current path
   this._curPathIdx = 0;     	// Index of position on current path
