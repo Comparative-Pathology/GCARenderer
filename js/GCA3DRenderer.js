@@ -1,13 +1,13 @@
 /*!
-* \file         GCA3DRenderer.js
-* \author       Bill Hill
-* \date         May 2021
-* \version      $Id$
-* \par
+* @file         GCA3DRenderer.js
+* @author       Bill Hill
+* @date         May 2021
+* @version      $Id$
+* @par
 * Address:
 *               Heriot-Watt University,
 *               Edinburgh, Scotland, EH14 4AS, UK
-* \par
+* @par
 * Copyright (C), [2021],
 * Heriot-Watt University, Edinburgh, UK.
 * 
@@ -26,149 +26,164 @@
 * License along with this program; if not, write to the Free
 * Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 * Boston, MA  02110-1301, USA.
-* \brief	A 3D rendering system created for the Gut Cell Atlas.
+* @brief	A 3D rendering system created for the Gut Cell Atlas.
 */
 
+import * as THREE from './three.module.js';
+import {MARenderer, MARenderMode, MARenderShape} from './MARender.js';
+
+/* globals XMLHttpRequest */
 
 /*!
- * \function	GCA3DRenderer
- * \brief	Creates a Gut Cell Atlas renderer for displaying and
+ * @class	GCA3DRenderer
+ * @constructor
+ * @brief	Creates a Gut Cell Atlas renderer for displaying and
  * 		interacting with 3D surface models of the reference and gut,
  * 		mid-line paths through the gut, sections through the image
  * 		volume orthogonal to (and centred on) the mid-line paths,
  * 		landmarks and additional markers.
- * \param	wind		Parent window.
- * \param	cont		Parent container.
- * \param	pick		Picking function called on pick events if
+ * @param	wind		Parent window.
+ * @param	cont		Parent container.
+ * @param	pick		Picking function called on pick events if
  * 				defined.
  */
-GCA3DRenderer = function(wind, cont, pick) {
-  var self = this;
-  this.type = 'GCA3DRenderer';
-  this._config = undefined;
-  Object.defineProperty(self, 'version', {value: '1.1.1', writable: false});
-  this._pickerFn = pick;
-  this._curPath = 0;	   	// Current path
-  this._curPathIdx = 0;     	// Index of position on current path
-  this._roiIdx = [0, 0];	// Indices defining the ROI on current path
-  this._ren = new MARenderer(wind, cont);
-  this.nameSep = '-';
-  this.referenceNamePrefix = 'ref';
-  this.anatomyNamePrefix = 'ana';
-  this.discNamePrefix = 'disc';
-  this.pathNamePrefix = 'path';
-  this.trackNamePrefix = 'track';
-  this.landmarkNamePrefix = 'lm';
-  this.landmarkNameLblPrefix = 'll';
-  this.markerNamePrefix = 'mm';
-  this.markerNameLblPrefix = 'ml';
+class GCA3DRenderer {
+  constructor(wind, cont, pick) {
+    this.type = 'GCA3DRenderer';
+    this._config = undefined;
+    Object.defineProperty(this, 'version', {value: '2.0.0', writable: false});
+    this._pickerFn = pick;
+    this._curPath = 0;	   	// Current path
+    this._curPathIdx = 0;     	// Index of position on current path
+    this._roiIdx = [0, 0];	// Indices defining the ROI on current path
+    this._ren = new MARenderer(wind, cont);
+    this.nameSep = '-';
+    this.referenceNamePrefix = 'ref';
+    this.anatomyNamePrefix = 'ana';
+    this.discNamePrefix = 'disc';
+    this.pathNamePrefix = 'path';
+    this.trackNamePrefix = 'track';
+    this.landmarkNamePrefix = 'lm';
+    this.landmarkNameLblPrefix = 'll';
+    this.markerNamePrefix = 'mm';
+    this.markerNameLblPrefix = 'ml';
+  }
 
-  /*!
-   * \function	init
-   * \brief	Post creation initialisation.
-   * \param	cfg		Configuration file URL or configuration as
+  /**
+   * @class	GCA3DRenderer
+   * @function	init
+   * @brief	Post creation initialisation.
+   * @param	cfg		Configuration file URL or configuration as
    * 				read from a valid configuration file.
    */
-  this.init = function(cfg) {
+  init(cfg) {
     if(this._isString(cfg)) {
-      cfg = self._loadJson(cfg);
+      cfg = this._loadJson(cfg);
     }
     if(this._isArray(cfg)) {
       cfg = cfg[0];
     }
-    self._setConfig(cfg);
+    this._setConfig(cfg);
     this._loadPaths();
     this._ren.init();
-    if(!Boolean(self._config.display_props.pick_precision)) {
-      self._config.display_props['pick_precision'] = 1.0;
+    if(!Boolean(this._config.display_props.pick_precision)) {
+      this._config.display_props['pick_precision'] = 1.0;
     }
-    self._ren.raycaster.linePrecision =
-        self._config.display_props.pick_precision;
-    this._ren.win.addEventListener('click', this._ren._pick, false);
-    this._ren.addEventListener('pick', self._picker, false);
+    this._ren.raycaster.linePrecision =
+        this._config.display_props.pick_precision;
+    this._ren.win.addEventListener('pointerdown', this._ren._pick.bind(this._ren),
+        false);
+    this._ren.win.addEventListener('pointerup', this._ren._pick.bind(this._ren),
+        false);
+    this._ren.addEventListener('pick', this._picker.bind(this), false);
   }
 
-  /*!
-   * \function	getConfig
-   * \return	Config data structure.
-   * \brief	Gets config data structure.
+  /**
+   * @class	GCA3DRenderer
+   * @function	getConfig
+   * @return	Config data structure.
+   * @brief	Gets config data structure.
    */
-  this.getConfig = function() {
-    return(self._config);
+  getConfig() {
+    return(this._config);
   }
 
-  /*!
-   * \function	addModels
-   * \brief	Adds the given set of models to the renderer. These are
+  /**
+   * @class	GCA3DRenderer
+   * @function	addModels
+   * @brief	Adds the given set of models to the renderer. These are
    *    	the (optional) reference surface (reference), the anatomy
    *    	surface models (anatomy-%d), disc orthogonal to the path(s)
    *    	(disc), the path(s) (path-%d) and the landmarks.
-   * \param	pths		An array of mid-line paths through the colon,
+   * @param	pths		An array of mid-line paths through the colon,
    *				with each path being encoded in a Jsn file
    *				which has the following form:
    */
-  this.addModels = function() {
+  addModels() {
     let name = undefined;
-    if(Boolean(self._config.reference_surfaces) &&
-       this._isArray(self._config.reference_surfaces) &&
-       (self._config.reference_surfaces.length > 0)) {
-      for(let i = 0, l = self._config.reference_surfaces.length; i < l; ++i) {
-        let ref = self._config.reference_surfaces[i];
+    if(Boolean(this._config.reference_surfaces) &&
+       this._isArray(this._config.reference_surfaces) &&
+       (this._config.reference_surfaces.length > 0)) {
+      for(let i = 0, l = this._config.reference_surfaces.length; i < l; ++i) {
+        let ref = this._config.reference_surfaces[i];
 	let dsp = ref.display_props;
-        this._ren.addModel({name:        self.getReferenceName() + String(i),
-	                    path:	 ref.filepath + '/' + ref.filename,
+        this._ren.addModel({name:        this.getReferenceName() + String(i),
+	                    path:	 this._config.model_dir +
+			                 ref.filepath + '/' + ref.filename,
 			    color:	 dsp.color,
 			    opacity:	 dsp.opacity,
 			    transparent: true});
       }
     }
-    if(Boolean(self._config.anatomy_surfaces) &&
-       this._isArray(self._config.anatomy_surfaces) &&
-       (self._config.anatomy_surfaces.length > 0)) {
-      for(let i = 0, l = self._config.anatomy_surfaces.length; i < l; ++i) {
-        let anat = self._config.anatomy_surfaces[i];
+    if(Boolean(this._config.anatomy_surfaces) &&
+       this._isArray(this._config.anatomy_surfaces) &&
+       (this._config.anatomy_surfaces.length > 0)) {
+      for(let i = 0, l = this._config.anatomy_surfaces.length; i < l; ++i) {
+        let anat = this._config.anatomy_surfaces[i];
 	let dsp = anat.display_props;
-	this._ren.addModel({name:       self.getAnatomyName(anat.id),
-			    path:       anat.filepath + '/' + anat.filename,
+	this._ren.addModel({name:       this.getAnatomyName(anat.id),
+			    path:       this._config.model_dir +
+		                        anat.filepath + '/' + anat.filename,
 			    color:      dsp.color,
 			    opacity:	dsp.opacity,
 			    transparent: true});
         if(this._isDefined(anat.map_filename)) {
-	  anat['mapping'] = this._loadJson(anat.filepath + '/' +
+	  anat['mapping'] = this._loadJson(this._config.model_dir +
+	                                   anat.filepath + '/' +
 	                                   anat.map_filename);
 	}
       }
     }
-    let dsc = self._config.disc;
+    let dsc = this._config.disc;
     let dsp = dsc.display_props;
-    this._ren.addModel({name:       self.getDiscName(dsc.id),
+    this._ren.addModel({name:       this.getDiscName(dsc.id),
                        mode:        MARenderMode.SHAPE,
 		       style:       MARenderShape.DISC,
 		       color:       dsp.color,
 		       size:        dsp.radius,
 		       extrude:     dsp.thickness});
-    for(let i = 0, l = self._config.paths.length; i < l; ++i) {
-      let pth = self._config.paths[i];
+    for(let i = 0, l = this._config.paths.length; i < l; ++i) {
+      let pth = this._config.paths[i];
       let dsp = pth.display_props;
-      this._ren.addModel({name:       self.getPathName(pth.id),
+      this._ren.addModel({name:       this.getPathName(pth.id),
                          mode:        MARenderMode.PATH,
 		         color:       dsp.color,
 		         linewidth:   dsp.line_width,
 		         vertices:    pth.points,
 		         tangents:    pth.tangents});
     }
-    let lof = self._config.display_props.label_offset;
+    let lof = this._config.display_props.label_offset;
     lof = new THREE.Vector3(lof[0], lof[1], lof[2]);
-    for(let i = 0; i < self._config.landmarks.length; ++i) {
-      let lmk = self._config.landmarks[i];
+    for(let i = 0; i < this._config.landmarks.length; ++i) {
+      let lmk = this._config.landmarks[i];
       for(let j = 0; j < lmk.paths.length; ++j) {
-	let lpi = self._config.pathIdToIdx[lmk.paths[j]];
-	let pas = self._config.paths[lpi].points[lmk.position[j]];
+	let lpi = this._config.pathIdToIdx[lmk.paths[j]];
+	let pas = this._config.paths[lpi].points[lmk.position[j]];
 	let pos = new THREE.Vector3(pas[0], pas[1], pas[2]);
-	self._ren.addModel({name: self.getLandmarkName(lmk.id),
+	this._ren.addModel({name: this.getLandmarkName(lmk.id),
 		           mode:  MARenderMode.MARKER,
 		           position: pos});
-	self._ren.addModel({name: self.getLandmarkLblName(lmk.id),
+	this._ren.addModel({name: this.getLandmarkLblName(lmk.id),
 		           mode:  MARenderMode.LABEL,
 		           text:  lmk.anatomy[0].abbreviated_name,
 		           position: pos.add(lof)});
@@ -176,9 +191,10 @@ GCA3DRenderer = function(wind, cont, pick) {
     }
   }
 
-  /*!
-   * \function	setView
-   * \brief	Sets the renderers vieweing parameters.
+  /**
+   * @class	GCA3DRenderer
+   * @function	setView
+   * @brief	Sets the renderers vieweing parameters.
    *		The views are given in the config, with each havin the
    *		following fields:
    * \verbatim
@@ -198,70 +214,73 @@ GCA3DRenderer = function(wind, cont, pick) {
    * 				  - cam_pos - position of the camera
    * 				  - up -       up vector of the camera
    */
-  this.setView = function() {
-    let dsp = self._config.display_props;
+  setView() {
+    let dsp = this._config.display_props;
     let v = dsp.model_views[dsp.viewTypeToIdx[dsp.default_view]];
     let c = new THREE.Vector3(v.centre[0], v.centre[1], v.centre[2]);
     let p = new THREE.Vector3(v.cam_pos[0], v.cam_pos[1], v.cam_pos[2]);
     let u  = new THREE.Vector3(v.up[0],  v.up[1],  v.up[2]);
-    self._ren.setCamera(c, v.near, v.far, p);
-    self._ren.setHome(p, u);
-    self._ren.goHome();
+    this._ren.setCamera(c, v.near, v.far, p);
+    this._ren.setHome(p, u);
+    this._ren.goHome();
   }
 
-  /*!
-   * \function	addMarker
-   * \brief	Adds a marker (with an optional text label).
-   * \param	name		Reference name string for the marker.
-   * \param	pos		Position of the marker as an array [x,y,z].
-   * \param	col		Colour of the marker.
-   * \param	txt		Optional text for label.
+  /**
+   * @class	GCA3DRenderer
+   * @function	addMarker
+   * @brief	Adds a marker (with an optional text label).
+   * @param	name		Reference name string for the marker.
+   * @param	pos		Position of the marker as an array [x,y,z].
+   * @param	col		Colour of the marker.
+   * @param	txt		Optional text for label.
    */
-  this.addMarker = function(name, pos, col, txt) {
+  addMarker(name, pos, col, txt) {
     pos = new THREE.Vector3(pos[0], pos[1], pos[2]);
-    self._ren.addModel({name: self.getMarkerName(name),
+    this._ren.addModel({name: this.getMarkerName(name),
                         mode:  MARenderMode.MARKER,
 		        color: col,
                         position: pos});
     if(txt) {
-      let dp = self._config.display_props;
+      let dp = this._config.display_props;
       let lof = new THREE.Vector3(dp.label_offset[0], dp.label_offset[1],
                                   dp.label_offset[2]);
-      self._ren.addModel({name: self.getMarkerLblName(name),
+      this._ren.addModel({name: this.getMarkerLblName(name),
                           mode:  MARenderMode.LABEL,
                           text:  txt,
                           position: pos.add(lof)});
     }
   }
 
-  /*!
-   * \function 
-   * \brief	Removes the marker (and it's optional text label) with the
+  /**
+   * @class	GCA3DRenderer
+   * @function  removeMarker
+   * @brief	Removes the marker (and it's optional text label) with the
    * 		given reference name.
-   * \param	Reference name string of the marker.
+   * @param	Reference name string of the marker.
    */
-  this.removeMarker = function(name) {
-    self._ren.removeModel(self.getMarkerName(name));
-    self._ren.removeModel(self.getMarkerLblName(name));
+  removeMarker(name) {
+    this._ren.removeModel(this.getMarkerName(name));
+    this._ren.removeModel(this.getMarkerLblName(name));
   }
 
-  /*!
-   * \function	addTrack
-   * \brief	Adds a track (line parallel to a midline path).
-   * \param	name		Reference name string for the track.
-   * \param	path_id		Midline path id.
-   * \param	start_idx	Index along the path at which the track starts.
-   * \param	end_idx		Index along the path at which the track ends.
-   * \param	col		Colour for the track.
-   * \param	dist		Distance from the midline for the track.
-   * \param	ang		Angle for the track with respect to the
+  /**
+   * @class	GCA3DRenderer
+   * @function	addTrack
+   * @brief	Adds a track (line parallel to a midline path).
+   * @param	name		Reference name string for the track.
+   * @param	path_id		Midline path id.
+   * @param	start_idx	Index along the path at which the track starts.
+   * @param	end_idx		Index along the path at which the track ends.
+   * @param	col		Colour for the track.
+   * @param	dist		Distance from the midline for the track.
+   * @param	ang		Angle for the track with respect to the
    * 				midline's reference normal in radians.
    */
-  this.addTrack = function(name, path_id, start_idx, end_idx, col, dist, ang) {
+  addTrack(name, path_id, start_idx, end_idx, col, dist, ang) {
     let path = undefined;
-    let path_idx = self._config.pathIdToIdx[path_id];
+    let path_idx = this._config.pathIdToIdx[path_id];
     if(path_idx !== undefined) {
-      path = self._config.paths[path_idx];
+      path = this._config.paths[path_idx];
       if(start_idx > end_idx) {
         let i = start_idx;
 	start_idx = end_idx;
@@ -289,9 +308,9 @@ GCA3DRenderer = function(wind, cont, pick) {
 		  pp[2] + (cad * pr[2] + sad * ps[2])]);
 	tgt.push([pt[0], pt[1], pt[2]]);
       }
-      let m_name = self.getTrackName(name);
+      let m_name = this.getTrackName(name);
       let dsp = path.display_props;
-      gcaRen._ren.addModel({name: m_name,
+      this._ren.addModel({name: m_name,
 	      mode:		MARenderMode.PATH,
 	      color:		col,
 	      linewidth:	dsp.line_width,
@@ -300,77 +319,80 @@ GCA3DRenderer = function(wind, cont, pick) {
     }
   }
 
-  /*!
-   * \function 
-   * \brief	Removes the track with the given reference name.
-   * \param	name		Reference name string of the track.
+  /**
+   * @class	GCA3DRenderer
+   * @function  removeTrack
+   * @brief	Removes the track with the given reference name.
+   * @param	name		Reference name string of the track.
    */
-  this.removeTrack = function(name) {
-    self._ren.removeModel(self.getTrackName(name));
+  removeTrack(name) {
+    this._ren.removeModel(this.getTrackName(name));
   }
 
-  /*!
-   * \function	setPosition
-   * \brief	Sets the current position along the colon. This is defined
+  /**
+   * @class	GCA3DRenderer
+   * @function	setPosition
+   * @brief	Sets the current position along the colon. This is defined
    * 		by a proportion from the first to the second given landmark.
    * 		The position of the ROI is similarly defined using it's
    * 		start and end points.
-   * \param	pmk0		Index of the first current position landmark.
-   * \param	pmk1		Index of the second current position landmark.
-   * \param	pdt		Proportional distance from the first landmark
+   * @param	pmk0		Index of the first current position landmark.
+   * @param	pmk1		Index of the second current position landmark.
+   * @param	pdt		Proportional distance from the first landmark
    * 				to the second for the current position.
-   * \param	smk0		Index of the first start of ROI landmark.
-   * \param	smk1		Index of the second start of ROI landmark.
-   * \param	sdt		Proportional distance from the first start of
+   * @param	smk0		Index of the first start of ROI landmark.
+   * @param	smk1		Index of the second start of ROI landmark.
+   * @param	sdt		Proportional distance from the first start of
    * 				ROI landmark to the second.
-   * \param	emk0		Index of the first end of ROI landmark.
-   * \param	emk1		Index of the second end of ROI landmark.
-   * \param	edt		Proportional distance from the first end of
+   * @param	emk0		Index of the first end of ROI landmark.
+   * @param	emk1		Index of the second end of ROI landmark.
+   * @param	edt		Proportional distance from the first end of
    * 				ROI landmark to the second.
    */
-  this.setPosition = function(pmk0, pmk1, pdt,
-  			      smk0, smk1, sdt,
-			      emk0, emk1, edt) {
-    let p = self._indexOnPath(pmk0, pmk1, pdt);
-    let rs = self._indexOnPath(smk0, smk1, sdt);
-    let re = self._indexOnPath(emk0, emk1, edt);
+  setPosition(pmk0, pmk1, pdt, smk0, smk1, sdt, emk0, emk1, edt) {
+    let p = this._indexOnPath(pmk0, pmk1, pdt);
+    let rs = this._indexOnPath(smk0, smk1, sdt);
+    let re = this._indexOnPath(emk0, emk1, edt);
     this._updatePosition(p[0], p[1], rs[1], re[1]);
   }
 
-  /*!
-   * \function	setDiscRadius
-   * \brief	Sets the disc radius.
-   * \param	rad		New disc radius.
+  /**
+   * @class	GCA3DRenderer
+   * @function	setDiscRadius
+   * @brief	Sets the disc radius.
+   * @param	rad		New disc radius.
    */
-  this.setDiscRadius = function(rad) {
-    let dsc = self._config.disc;
+  setDiscRadius(rad) {
+    let dsc = this._config.disc;
     let dsp = dsc.display_props;
     dsp.radius = rad;
-    let pd = self._config.paths[self._curPath];
-    let vtx = pd.points[self._curPathIdx];
-    let tan = pd.tangents[self._curPathIdx];
+    let pd = this._config.paths[this._curPath];
+    let vtx = pd.points[this._curPathIdx];
+    let tan = pd.tangents[this._curPathIdx];
     let ext = dsp.thickness;
     if(!Boolean(ext)) {
       ext = 1.0;
     }
-    self._ren.updateModel({name: self.getDiscName(dsc.id),
+    this._ren.updateModel({name: this.getDiscName(dsc.id),
 	size: rad,
 	position: new THREE.Vector3(vtx[0], vtx[1], vtx[2]),
 	normal: new THREE.Vector3(tan[0], tan[1], tan[2]),
 	extrude: ext});
   }
 
-  /*!
-   * \function  animate
-   * \brief	Makes render live.
+  /**
+   * @class	GCA3DRenderer
+   * @function  animate
+   * @brief	Makes render live.
    */
-  this.animate = function() {
-    self._ren.animate();
+  animate() {
+    this._ren.animate();
   }
 
-  /*!
-   * \function	getPosition
-   * \return	An array [pmk0, pmk1, pdt] with
+  /**
+   * @class	GCA3DRenderer
+   * @function	getPosition
+   * @return	An array [pmk0, pmk1, pdt] with
    *              - pmk0 - Index of the lower landmark enclosing the given
    *                       path index.
    *              - pmk1 - Index of the upper landmark enclosing the given
@@ -378,15 +400,15 @@ GCA3DRenderer = function(wind, cont, pick) {
    *              - pdt -  Proportional distance from the first landmark
    *                       to the second.
    * 		or undefined if the enclosing landmarks can not be found.
-   * \brief	Finds the landmarks either side of the given path index
+   * @brief	Finds the landmarks either side of the given path index
    * 		for the given path along with the proportional distance from
    * 		the first landmark to the second.
-   * \param path		The path.
-   * \param path_idx		Index along the path.
+   * @param path		The path.
+   * @param path_idx		Index along the path.
    */
-  this.getPosition = function(path, path_idx) {
+  getPosition(path, path_idx) {
     let rtn = undefined;
-    let landmarks = self._config.landmarks;
+    let landmarks = this._config.landmarks;
     let lmks = [undefined, undefined];
     let pi = [-1, -1];
     /* Find lower and upper containing landmarks of path_idx. */
@@ -425,44 +447,47 @@ GCA3DRenderer = function(wind, cont, pick) {
     return(rtn);
   }
 
-  /*!
-   * \function	getSectionImage
-   * \return	URL of the section image.
-   * \brief	Computes section image URL at the current position.
+  /**
+   * @class	GCA3DRenderer
+   * @function	getSectionImage
+   * @return	URL of the section image.
+   * @brief	Computes section image URL at the current position.
    */
-  this.getSectionImage = function() {
+  getSectionImage() {
     let img = undefined;
-    if(Boolean(self._config.section_files) &&
-       (self._config.section_files.length > self._curPath)) {
-      let sf = self._config.section_files[self._curPath];
+    if(Boolean(this._config.section_files) &&
+       (this._config.section_files.length > this._curPath)) {
+      let sf = this._config.section_files[this._curPath];
       let template = sf.filename;
       let rx = /%([0 ]?)(\d*)d/;
       let fmt = template.match(rx);
       let n = parseInt(fmt[2]) || 0;
-      let d = String(self._curPathIdx);
+      let d = String(this._curPathIdx);
       if(n > d.length) {
 	d = fmt[1].repeat(n - d.length) + d;
       }
-      img = sf.filepath + '/' + template.replace(rx, d);
+      img = this._config.model_dir +
+          sf.filepath + '/' + template.replace(rx, d);
     }
     return(img);
   }
 
-  /*!
-   * \function  positionToPath
-   * \return    [<path>, <index>, <dsiatance>] or undefined
-   * \brief	Finds a path which intersects the given position and then
+  /**
+   * @class	GCA3DRenderer
+   * @function  positionToPath
+   * @return    [<path>, <index>, <dsiatance>] or undefined
+   * @brief	Finds a path which intersects the given position and then
    * 		returns the path and path index. If a path does not pass
    * 		within the tolerance distance from the position then
    * 		undefined is returned.
-   * \param	pos		Position coordinate array ([x, y, z]).
-   * \param	tol		Tolerance distance.
+   * @param	pos		Position coordinate array ([x, y, z]).
+   * @param	tol		Tolerance distance.
    */
-  this.positionToPath = function(pos, tol) {
+  positionToPath(pos, tol) {
     let fnd = [0, 0, Number.MAX_VALUE];
     let pv = new THREE.Vector3(pos[0], pos[1], pos[2]);
-    for(let pi = 0; pi < self._config.paths.length; ++pi) {
-      let path = self._config.paths[pi];
+    for(let pi = 0; pi < this._config.paths.length; ++pi) {
+      let path = this._config.paths[pi];
       for(let pj = 0; pj < path.n; ++pj) {
         let pp = path.points[pj];
 	let d2 = pv.distanceToSquared(new THREE.Vector3(pp[0],pp[1],pp[2]));
@@ -481,14 +506,16 @@ GCA3DRenderer = function(wind, cont, pick) {
     return(fnd);
   }
 
- /*! \function	getAnatomyConfig
-   *  \return	Anatomy config or undefined if the id is not valid.
-   * \brief	Gets the anatomy configutation given an anatomy id.
-   * \param	id		GCA anatomy id.
+  /**
+   * @class	GCA3DRenderer
+   * @function	getAnatomyConfig
+   * @return	Anatomy config or undefined if the id is not valid.
+   * @brief	Gets the anatomy configutation given an anatomy id.
+   * @param	id		GCA anatomy id.
   */
-  this.getAnatomyConfig = function(id) {
+  getAnatomyConfig(id) {
     let an = undefined;
-    let all_an = self._config.anatomy_surfaces;
+    let all_an = this._config.anatomy_surfaces;
     for(let i = 0; i <  all_an.length; ++i) {
       if(all_an[i].id === id) {
         an = all_an[i];
@@ -498,185 +525,201 @@ GCA3DRenderer = function(wind, cont, pick) {
     return(an);
   }
 
-  /*
-   * \function	getReferenceName
-   * \return	Reference object name. Can be used to find/update reference
+  /**
+   * @class	GCA3DRenderer
+   * @function	getReferenceName
+   * @return	Reference object name. Can be used to find/update reference
    * 		object.
    */
-  this.getReferenceName = function() {
-    let name = self.referenceNamePrefix + self.nameSep +
-               gcaRen._config.reference_surfaces.id;
+  getReferenceName() {
+    let name = this.referenceNamePrefix + this.nameSep +
+               this._config.reference_surfaces.id;
     return(name);
   }
 
-  /*
-   * \function	getAnatomyName
-   * \return	Anatomy object name. Can be used to find/update anatomy
+  /**
+   * @class	GCA3DRenderer
+   * @function	getAnatomyName
+   * @return	Anatomy object name. Can be used to find/update anatomy
    * 		object.
-   * \param	id		GCA anatomy id.
+   * @param	id		GCA anatomy id.
    */
-  this.getAnatomyName = function(id) {
-    let name = self.anatomyNamePrefix + self.nameSep + id;
+  getAnatomyName(id) {
+    let name = this.anatomyNamePrefix + this.nameSep + id;
     return(name);
   }
 
-  /*
-   * \function	getDiscName
-   * \return	Disc object name. Can be used to find/update disc
+  /**
+   * @class	GCA3DRenderer
+   * @function	getDiscName
+   * @return	Disc object name. Can be used to find/update disc
    * 		object.
-   * \param	id		GCA anatomy id.
+   * @param	id		GCA anatomy id.
    */
-  this.getDiscName = function(id) {
-    let name = self.discNamePrefix + self.nameSep + id;
-    return(name)
-  }
-
-  /*
-   * \function	getPathName
-   * \return	Path object name. Can be used to find/update path
-   * 		object.
-   * \param	id		GCA path id.
-   */
-  this.getPathName = function(id) {
-    let pix = self._config.pathIdToIdx[id];
-    let name = self.pathNamePrefix + self.nameSep + pix;
+  getDiscName(id) {
+    let name = this.discNamePrefix + this.nameSep + id;
     return(name);
   }
 
-  /*
-   * \function	getLandmarkName
-   * \return	Landmark object name. Can be used to find/update landmark
+  /**
+   * @class	GCA3DRenderer
+   * @function	getPathName
+   * @return	Path object name. Can be used to find/update path
    * 		object.
-   * \param	id		GCA landmark id.
+   * @param	id		GCA path id.
    */
-  this.getLandmarkName = function(id) {
-    let name = self.landmarkNamePrefix + self.nameSep + id;
+  getPathName(id) {
+    let pix = this._config.pathIdToIdx[id];
+    let name = this.pathNamePrefix + this.nameSep + pix;
     return(name);
   }
 
-  /*
-   * \function	getLandmarkLblName
-   * \return	Landmark label object name. Can be used to find/update landmark
+  /**
+   * @class	GCA3DRenderer
+   * @function	getLandmarkName
+   * @return	Landmark object name. Can be used to find/update landmark
+   * 		object.
+   * @param	id		GCA landmark id.
+   */
+  getLandmarkName(id) {
+    let name = this.landmarkNamePrefix + this.nameSep + id;
+    return(name);
+  }
+
+  /**
+   * @class	GCA3DRenderer
+   * @function	getLandmarkLblName
+   * @return	Landmark label object name. Can be used to find/update landmark
    * 		label object.
-   * \param	id		GCA landmark id.
+   * @param	id		GCA landmark id.
    */
-  this.getLandmarkLblName = function(id) {
-    let name = self.landmarkNameLblPrefix + self.nameSep + id;
+  getLandmarkLblName(id) {
+    let name = this.landmarkNameLblPrefix + this.nameSep + id;
     return(name);
   }
 
-  /*
-   * \function	getMarkerName
-   * \return	Marker object name. Can be used to find/update marker
+  /**
+   * @class	GCA3DRenderer
+   * @function	getMarkerName
+   * @return	Marker object name. Can be used to find/update marker
    * 		object.
-   * \param	id		Marker id.
+   * @param	id		Marker id.
    */
-  this.getMarkerName = function(id) {
-    let name = self.markerNamePrefix + self.nameSep + id;
+  getMarkerName(id) {
+    let name = this.markerNamePrefix + this.nameSep + id;
     return(name);
   }
 
-  /*
-   * \function	getMarkerLblName
-   * \return	Marker label object name. Can be used to find/update marker
+  /**
+   * @class	GCA3DRenderer
+   * @function	getMarkerLblName
+   * @return	Marker label object name. Can be used to find/update marker
    * 		label object.
-   * \param	id		GCA marker id.
+   * @param	id		GCA marker id.
    */
-  this.getMarkerLblName = function(id) {
-    let name = self.markerNameLblPrefix + self.nameSep + id;
+  getMarkerLblName(id) {
+    let name = this.markerNameLblPrefix + this.nameSep + id;
     return(name);
   }
 
-  /*!
-   * \function	getTrackName
-   * \return	Track object name. Can be used to find/update track object.
-   * \param	id		Track id.
+  /**
+   * @class	GCA3DRenderer
+   * @function	getTrackName
+   * @return	Track object name. Can be used to find/update track object.
+   * @param	id		Track id.
    */
-  this.getTrackName = function(id) {
-    let name = self.trackNamePrefix + self.nameSep + id;
+  getTrackName(id) {
+    let name = this.trackNamePrefix + this.nameSep + id;
     return(name);
   }
 
-  /*!
-   * \function  findDispObj
-   * \return    Array of display group and display object or array with
+  /**
+   * @class	GCA3DRenderer
+   * @function  findDispObj
+   * @return    Array of display group and display object or array with
    *            display object undefined if not found.
-   * \brief     Finds the first display object which has the same GCA group
+   * @brief     Finds the first display object which has the same GCA group
    *            and GCA id. If the GCA id is undefined then the first
    *            object with matching GCA group is found.
-   * \param     gca_grp GCA group of the object.
-   * \param     gca_id  GCA id of the object.
+   * @param     gca_grp GCA group of the object.
+   * @param     gca_id  GCA id of the object.
    */
-  this.findDispObj = function(gca_grp, gca_id) {
+  findDispObj(gca_grp, gca_id) {
     return(this._findDispObjs(gca_grp, gca_id, false));
   }
 
-  /*!
-   * \function  findAllDispObj
-   * \return    Array of arrays, with each inner array being the display
+  /**
+   * @class	GCA3DRenderer
+   * @function  findAllDispObj
+   * @return    Array of arrays, with each inner array being the display
    *            group and display object found. If no matching objects are
    *            found then an empty array is returned.
-   * \brief     Finds all display objects which have the same GCA group
+   * @brief     Finds all display objects which have the same GCA group
    *            and / or GCA id. If the GCA group is undefined then all
    *            groups are searched, similarly if the GCA id is undefined
    *            then all objects within the group(s) are found.
-   * \param     gca_grp GCA group of the object.
-   * \param     gca_id  GCA id of the object.
+   * @param     gca_grp GCA group of the object.
+   * @param     gca_id  GCA id of the object.
    */
-  this.findAllDispObj = function(gca_grp, gca_id) {
+  findAllDispObj(gca_grp, gca_id) {
     return(this._findDispObjs(gca_grp, gca_id, true));
   }
 
   /* Support function below here. */
 
-  /*!
-   * \function  _isDefined
-   * \return    True of false.
-   * \brief     Test is given parameter is defined.
-   * \param     obj                     Given parameter.
+  /**
+   * @class	GCA3DRenderer
+   * @function  _isDefined
+   * @return    True of false.
+   * @brief     Test is given parameter is defined.
+   * @param     obj                     Given parameter.
    */
-  this._isDefined = function(x) {
+  _isDefined(x) {
     return(typeof x !== 'undefined');
   }
 
-  /*!
-   * \function  _isArray
-   * \return	True of false;
-   * \brief	Convinient test for object being an array.
+  /**
+   * @class	GCA3DRenderer
+   * @function  _isArray
+   * @return	True of false;
+   * @brief	Convinient test for object being an array.
    */
-  this._isArray = function(obj) {
+  _isArray(obj) {
     return(Object.prototype.toString.call(obj) === '[object Array]');
   }
 
-  /*!
-   * \function  _isString
-   * \return	True of false;
-   * \brief	Convinient test for object being a string.
+  /**
+   * @class	GCA3DRenderer
+   * @function  _isString
+   * @return	True of false;
+   * @brief	Convinient test for object being a string.
    */
-  this._isString = function(obj) {
+  _isString(obj) {
     return(Object.prototype.toString.call(obj) === '[object String]');
   }
 
-  /*!
-   * \function	_clamp
-   * \return	Clamped vlue.
-   * \brief	Clamps the given value to given range.
-   * \param	v		Given value.
-   * \param	mn		Minimum value of range.
-   * \param	mx		Maximum value of range.
+  /**
+   * @class	GCA3DRenderer
+   * @function	_clamp
+   * @return	Clamped vlue.
+   * @brief	Clamps the given value to given range.
+   * @param	v		Given value.
+   * @param	mn		Minimum value of range.
+   * @param	mx		Maximum value of range.
    */
-  this._clamp = function(v, mn, mx) {
+  _clamp(v, mn, mx) {
     return(v < mn? mn: v > mx ? mx: v);
   }
 
-  /*!
-   * \function	_baryCoords
-   * \return	Barycentric coordinates of the given point.
-   * \brief	Computes the barycentric coordinates of the given point.
-   * \param	t		Array of the triangle vertex positions.
-   * \param	p		Point in triangle.
+  /**
+   * @class	GCA3DRenderer
+   * @function	_baryCoords
+   * @return	Barycentric coordinates of the given point.
+   * @brief	Computes the barycentric coordinates of the given point.
+   * @param	t		Array of the triangle vertex positions.
+   * @param	p		Point in triangle.
    */
-  this._baryCoords = function(t, p) {
+  _baryCoords(t, p) {
     let b = undefined;
     let t0 = t[0];
     let v0 = new THREE.Vector3(t[1].x - t0.x, t[1].y - t0.y, t[1].z - t0.z);
@@ -698,16 +741,18 @@ GCA3DRenderer = function(wind, cont, pick) {
     return(b);
   }
 
-  /*!
-   * \function	_loadJson
-   * \return	Object loaded.
-   * \brief	Loads the JSON file at the given URL.
-   * \param	url		URL of the JSON file.
+  /**
+   * @class	GCA3DRenderer
+   * @function	_loadJson
+   * @return	Object loaded.
+   * @brief	Loads the JSON file at the given URL.
+   * @param	url		URL of the JSON file.
    */
-  this._loadJson = function(url) {
+  _loadJson(url) {
     let obj = undefined;
     let req = new XMLHttpRequest();
     req.open('GET', url, false);
+    req.overrideMimeType("text/html");
     req.send(null);
     if(req.status === 200) {
       obj = JSON.parse(req.responseText);
@@ -715,23 +760,28 @@ GCA3DRenderer = function(wind, cont, pick) {
     return(obj);
   }
 
-  /*!
-   * \function	_setConfig
-   * \brief	Sets renderer configuration.
-   * \param	Given cfg	configuration.
+  /**
+   * @class	GCA3DRenderer
+   * @function	_setConfig
+   * @brief	Sets renderer configuration.
+   * @param	Given cfg	configuration.
    */
-  this._setConfig = function(cfg) {
-    self._config = cfg;
+  _setConfig(cfg) {
+    this._config = cfg;
+    if(!(this._config.model_dir)) {
+      this._config['model_dir'] = '';
+    }
     this._sortCfgLandmarks(cfg);
     this._findCfgPaths();
     this._findCfgModelObjects();
     this._findCfgViews();
-    this._ren.markerSizeSet(self._config.display_props.marker_size);
+    this._ren.markerSizeSet(this._config.display_props.marker_size);
   }
 
-  /*!
-   * \function	_loadPaths
-   * \brief	Loads the path data into the config using the URLs in
+  /**
+   * @class	GCA3DRenderer
+   * @function	_loadPaths
+   * @brief	Loads the path data into the config using the URLs in
    *  		the config.
    *  		The paths are read from JSON files with the format:
    * \verbatim
@@ -742,10 +792,11 @@ GCA3DRenderer = function(wind, cont, pick) {
      }
      \endverbatim				  
    */
-  this._loadPaths = function() {
-    for(let i = 0, l = self._config.paths.length; i < l; ++i) {
-      let path = self._config.paths[i];
-      let path_data = this._loadJson(path.filepath + '/' +
+  _loadPaths() {
+    for(let i = 0, l = this._config.paths.length; i < l; ++i) {
+      let path = this._config.paths[i];
+      let path_data = this._loadJson(this._config.model_dir + 
+                                     path.filepath + '/' +
                                      path.spline_filename);
       path["n"] = path_data.n;
       path["points"] = path_data.points;
@@ -756,23 +807,25 @@ GCA3DRenderer = function(wind, cont, pick) {
     }
   }
 
-  /*!
+  /**
    *
-   * \function	_sortCfgLandmarks
-   * \brief	Sorts the landmarks in place) in the given configuration.
+   * @class	GCA3DRenderer
+   * @function	_sortCfgLandmarks
+   * @brief	Sorts the landmarks in place) in the given configuration.
    *  		This is done to ensure that landmarks are ordered by their
    * 		position along (combined) paths.
    */
-  this._sortCfgLandmarks = function(cfg) {
+  _sortCfgLandmarks(cfg) {
     cfg.landmarks.sort((a, b) => {
       let cmp = a.position[0] - b.position[0];
       return(cmp);
     });
   }
 
-  /*!
-   * \function  _findCfgModelObjects
-   * \brief     Finds model objects and sets easily accessed entries
+  /**
+   * @class	GCA3DRenderer
+   * @function  _findCfgModelObjects
+   * @brief     Finds model objects and sets easily accessed entries
    * 		in the config:
    * 		  config.display_props     <- GLOBAL_DISPLAY_PROP
    * 		  config.disc              <- DISC
@@ -780,8 +833,8 @@ GCA3DRenderer = function(wind, cont, pick) {
    * 		  config.anatomy_surfaces  <- [ANATOMY_SURFACES]
    *            easily accessed in the config.
    */
-  this._findCfgModelObjects = function() {
-    let cfg = self._config;
+  _findCfgModelObjects() {
+    let cfg = this._config;
     for(const i in cfg.model_objects) {
       let mo = cfg.model_objects[i];
       if(this._isDefined(mo) && this._isDefined(mo.group)) {
@@ -818,24 +871,26 @@ GCA3DRenderer = function(wind, cont, pick) {
     }
   }
 
-  /*!
-   * \function	_findCfgPaths
-   * \brief	Build a look up table from path ids to path indices.
+  /**
+   * @class	GCA3DRenderer
+   * @function	_findCfgPaths
+   * @brief	Build a look up table from path ids to path indices.
    */
-  this._findCfgPaths = function() {
-    self._config['pathIdToIdx'] = [];
-    for(let i = 0; i < self._config.paths.length; ++i) {
-      let p = self._config.paths[i];
-      self._config.pathIdToIdx[p.id] = i;
+  _findCfgPaths() {
+    this._config['pathIdToIdx'] = [];
+    for(let i = 0; i < this._config.paths.length; ++i) {
+      let p = this._config.paths[i];
+      this._config.pathIdToIdx[p.id] = i;
     }
   }
 
-  /*!
-   * \function	_findCfgViews
-   * \brief	Build a look up table from view types to view indices.
+  /**
+   * @class	GCA3DRenderer
+   * @function	_findCfgViews
+   * @brief	Build a look up table from view types to view indices.
    */
-  this._findCfgViews = function() {
-    let gdp = self._config.display_props;
+  _findCfgViews() {
+    let gdp = this._config.display_props;
     gdp['viewTypeToIdx'] = [];
     for(const i in gdp.model_views) {
       let v = gdp.model_views[i];
@@ -843,17 +898,18 @@ GCA3DRenderer = function(wind, cont, pick) {
     }
   }
 
-  /*!
-   * \function	_indexOnPath
-   * \return	Array of path index and position index along the path.
-   * \brief	Finds the index on a path which is dst fraction from the
+  /**
+   * @class	GCA3DRenderer
+   * @function	_indexOnPath
+   * @return	Array of path index and position index along the path.
+   * @brief	Finds the index on a path which is dst fraction from the
    * 		landmark lmn0 toward landmark lmn1. Both landmarks must
    * 		be on the same path.
-   * \param	lmid0		First landmark id.
-   * \param	lmid1		Second landmark id.
-   * \param	dst		Proportional distance.
+   * @param	lmid0		First landmark id.
+   * @param	lmid1		Second landmark id.
+   * @param	dst		Proportional distance.
    */
-  this._indexOnPath = function(lmid0, lmid1, dst) {
+  _indexOnPath(lmid0, lmid1, dst) {
     let path = undefined;
     let path_idx = undefined;
     let index = undefined;
@@ -861,10 +917,10 @@ GCA3DRenderer = function(wind, cont, pick) {
     let mpi = [-1, -1];
     let mp = [[], []];
     let li = 0;
-    let ll = self._config.landmarks.length;
+    let ll = this._config.landmarks.length;
     // Find landmarks and paths with matching ids
     while(((mi[0] < 0) || (mi[1] < 0)) && li < ll) {
-      let lmk = self._config.landmarks[li];
+      let lmk = this._config.landmarks[li];
       if(lmk.id === lmid0) {
 	mi[0] = li;
 	mp[0] = lmk.paths;
@@ -888,36 +944,37 @@ GCA3DRenderer = function(wind, cont, pick) {
 	    mpi[0] = li;
 	    mpi[1] = ji;
 	    path = mp[0][li];
-	    path_idx = self._config.pathIdToIdx[path];
+	    path_idx = this._config.pathIdToIdx[path];
 	  }
 	}
         ++li;
       }
       if(path_idx !== undefined) {
-        let i0 = self._config.landmarks[mi[0]].position[mpi[0]];
-        let i1 = self._config.landmarks[mi[1]].position[mpi[1]];
+        let i0 = this._config.landmarks[mi[0]].position[mpi[0]];
+        let i1 = this._config.landmarks[mi[1]].position[mpi[1]];
 	index = i0 + Math.floor((i1 - i0) * dst);
-	index = this._clamp(index, 0, self._config.paths[path_idx].n - 1);
+	index = this._clamp(index, 0, this._config.paths[path_idx].n - 1);
       }
     }
     return([path_idx, index]);
   }
 
-  /*!
-   * \function	_updateColon
-   * \brief	Updates the colon colour(s) and opacity.
+  /**
+   * @class	GCA3DRenderer
+   * @function	_updateColon
+   * @brief	Updates the colon colour(s) and opacity.
    */
-  this._updateColon = function() {
-    let scene = self._ren.scene;
+  _updateColon() {
+    let scene = this._ren.scene;
     for(let i = 0, l = scene.children.length; i < l; ++i) {
       let child = scene.children[i];
       if(child.name.substring(0, 7) === 'anatomy') {
         let s = child.name.split('_');
 	if(s.length > 1) {
 	  let idx = parseInt(s[1]);
-	  if((idx >= 0) && (idx < self._config.anatomy_surfaces.length)) {
-	    let anat = self._config.anatomy_surfaces[idx];
-	    self._ren.updateModel({name: child.name,
+	  if((idx >= 0) && (idx < this._config.anatomy_surfaces.length)) {
+	    let anat = this._config.anatomy_surfaces[idx];
+	    this._ren.updateModel({name: child.name,
 				   color: anat.color,
 				   opacity: anat.opacity});
 	  }
@@ -926,75 +983,77 @@ GCA3DRenderer = function(wind, cont, pick) {
     }
   }
 
-  /*!
-   * \function	_updatePosition
-   * \brief	Update the rendering for a new current path position or
+  /**
+   * @class	GCA3DRenderer
+   * @function	_updatePosition
+   * @brief	Update the rendering for a new current path position or
    * 		new highlighted ROI.
-   * \param	path		Index of path for current position.
-   * \param	pathIdx		Index of position on path for current position.
-   * \param	roiIdxSrt	Index of position on path for start of ROI.
-   * \param	roiIdxEnd	Index of position on path for end of ROI.
+   * @param	path		Index of path for current position.
+   * @param	pathIdx		Index of position on path for current position.
+   * @param	roiIdxSrt	Index of position on path for start of ROI.
+   * @param	roiIdxEnd	Index of position on path for end of ROI.
    */
-  this._updatePosition = function(path, pathIdx, roiIdxSrt, roiIdxEnd) {
-    self._curPath = path;
-    self._curPathIdx = pathIdx;
-    self._roiIdx = [roiIdxSrt, roiIdxEnd];
+  _updatePosition(path, pathIdx, roiIdxSrt, roiIdxEnd) {
+    this._curPath = path;
+    this._curPathIdx = pathIdx;
+    this._roiIdx = [roiIdxSrt, roiIdxEnd];
     //
-    let pd = self._config.paths[self._curPath];
+    let pd = this._config.paths[this._curPath];
     // Update disc
-    let dsc = self._config.disc;
+    let dsc = this._config.disc;
     let dsp = dsc.display_props;
-    let name = self.getDiscName(dsc.id);
-    let vtx = pd.points[self._curPathIdx];
-    let tan = pd.tangents[self._curPathIdx];
+    let name = this.getDiscName(dsc.id);
+    let vtx = pd.points[this._curPathIdx];
+    let tan = pd.tangents[this._curPathIdx];
     let ext = dsp.thickness;
     if(!Boolean(ext)) {
       ext = 1.0;
     }
-    self._ren.updateModel({name: name,
+    this._ren.updateModel({name: name,
 	size: dsp.radius,
 	position: new THREE.Vector3(vtx[0], vtx[1], vtx[2]),
 	normal: new THREE.Vector3(tan[0], tan[1], tan[2]),
 	extrude: ext});
     // Update highlight
     name = 'highlight';
-    let vertices = pd.points.slice(self._roiIdx[0], self._roiIdx[1]);
-    let tangents = pd.tangents.slice(self._roiIdx[0], self._roiIdx[1]);
-    if(self._ren.getObjectByName(name)) {
-      self._ren.updateModel({name: name,
+    let vertices = pd.points.slice(this._roiIdx[0], this._roiIdx[1]);
+    let tangents = pd.tangents.slice(this._roiIdx[0], this._roiIdx[1]);
+    if(this._ren.getObjectByName(name)) {
+      this._ren.updateModel({name: name,
 	  vertices:   vertices,
 	  tangents:   tangents});
     } else {
-      self._ren.addModel({name: name,
+      this._ren.addModel({name: name,
 	  mode:       MARenderMode.PATH,
-	  color:      self._config.display_props.path_highlight_color,
-	  linewidth:  self._config.display_props.path_highlight_width,
+	  color:      this._config.display_props.path_highlight_color,
+	  linewidth:  this._config.display_props.path_highlight_width,
 	  vertices:   vertices,
 	  tangents:   tangents});
     }
   }
 
-  /*!
-   * \function  _findDispObjs
-   * \return    Array of display group and display object or array of arrays,
+  /**
+   * @class	GCA3DRenderer
+   * @function  _findDispObjs
+   * @return    Array of display group and display object or array of arrays,
    * 		with each inner array being the display group and display
    * 		object found. If no matching objects are found then an empty
    * 		array is returned.
-   * \brief     Finds either the first or all display objects which have the
+   * @brief     Finds either the first or all display objects which have the
    * 		same GCA group and / or GCA id. If the GCA group is undefined
    * 		then all groups are searched, similarly if the GCA id is
    * 		undefined then all objects within the group(s) are found.
-   * \param     gca_grp GCA group of the object.
-   * \param     gca_id  GCA id of the object.
+   * @param     gca_grp GCA group of the object.
+   * @param     gca_id  GCA id of the object.
    */
-  this._findDispObjs = function(gca_grp, gca_id, all) {
+  _findDispObjs(gca_grp, gca_id, all) {
     let objs = [];
-    let scene = self._ren.scene;
+    let scene = this._ren.scene;
     for(let i = 0, l = scene.children.length; i < l; ++i) {
       let grp = undefined;
       let id = undefined;
       let obj = scene.children[i];
-      let tynm = obj.name.split(self.nameSep);
+      let tynm = obj.name.split(this.nameSep);
       if(tynm.length > 1) {
 	switch(tynm[0]) {
           case this.referenceNamePrefix:
@@ -1026,6 +1085,7 @@ GCA3DRenderer = function(wind, cont, pick) {
           case this.markerNameLblPrefix:
 	    grp = 'MARKERS';
 	    id = tynm[1];
+	    break;
 	  default:
 	    break;
 	}
@@ -1045,9 +1105,10 @@ GCA3DRenderer = function(wind, cont, pick) {
     return(objs);
   }
 
-  /*!
-   * \function	_picker
-   * \brief	Processes pick events before passing them on to the
+  /**
+   * @class	GCA3DRenderer
+   * @function	_picker
+   * @brief	Processes pick events before passing them on to the
    * 		client picker function.
    * 		Currently only paths, landmarks and markers are handled
    * 		by this function, all other objects are ignored. The
@@ -1065,8 +1126,8 @@ GCA3DRenderer = function(wind, cont, pick) {
    * 		The obj, typ, name and pos arrays are of the same length.
    * \parma	ev		Event.
    */
-  this._picker = function(ev) {
-    if(ev && ev.type && (ev.type === 'pick') && self._picker) {
+  _picker(ev) {
+    if(ev && ev.type && (ev.type === 'pick') && this._picker) {
       /* Find hit on path object nearest to centroid of hits, but
        * any hit on a landmark or marker will take priority. */
       let idx = {pth: -1, mkm: -1, ana: -1, trk: -1};
@@ -1078,14 +1139,14 @@ GCA3DRenderer = function(wind, cont, pick) {
       let triA = [];
       for(let i = 0, l = ev.hitlist.length; i < l; ++i) {
 	let hit = ev.hitlist[i];
-	obj = hit.object;
+	let obj = hit.object;
 	if(obj && obj.name) {
-	  tynm = obj.name.split(self.nameSep);
+	  let tynm = obj.name.split(this.nameSep);
 	  if(tynm.length > 1) {
 	    if(tynm.length > 2) {
-	      tynm = [tynm[0], tynm.slice(1).join(self.nameSep)];
+	      tynm = [tynm[0], tynm.slice(1).join(this.nameSep)];
 	    }
-	    if(tynm[0] === self.pathNamePrefix) {
+	    if(tynm[0] === this.pathNamePrefix) {
 	      if(idx.pth < 0) {
 		idx.pth = objA.length;
 		cnt.push(1);
@@ -1098,8 +1159,8 @@ GCA3DRenderer = function(wind, cont, pick) {
 		++(cnt[idx.pth]);
 		posA[idx.pth].add(hit.point);
 	      }
-	    } else if((tynm[0] === self.landmarkNamePrefix) ||
-	              (tynm[0] === self.markerNamePrefix)) {
+	    } else if((tynm[0] === this.landmarkNamePrefix) ||
+	              (tynm[0] === this.markerNamePrefix)) {
 	      if(idx.mkm < 0) {
 		idx.mkm = objA.length;
 		cnt.push(1);
@@ -1113,7 +1174,16 @@ GCA3DRenderer = function(wind, cont, pick) {
 		++(cnt[idx.pth]);
 		posA[idx.pth].add(hit.point);
 	      }
-	    } else if(tynm[0] === self.anatomyNamePrefix) {
+	    } else if(tynm[0] === this.trackNamePrefix) {
+	      if(idx.trk < 0) {
+	        idx.trk  = objA.length;
+                cnt.push(1);
+		objA.push(obj);
+		typA.push(tynm[0]);
+		namA.push(tynm[1]);
+		posA.push(hit.point);
+              }
+	    } else if(tynm[0] === this.anatomyNamePrefix) {
 	      if(idx.ana < 0) {
 	        idx.ana  = objA.length;
                 cnt.push(1);
@@ -1123,45 +1193,37 @@ GCA3DRenderer = function(wind, cont, pick) {
 		posA.push(hit.point);
 		triA.push(hit.faceIndex);
               }
-	    } else if(tynm[0] === self.trackNamePrefix) {
-	      if(idx.trk < 0) {
-	        idx.trk  = objA.length;
-                cnt.push(1);
-		objA.push(obj);
-		typA.push(tynm[0]);
-		namA.push(tynm[1]);
-		posA.push(hit.point);
-              }
             }
 	  }
 	}
       }
       if(objA.length > 0) {
 	for(let i = 0; i < objA.length; ++i) {
-	  if(typA[i] === self.anatomyNamePrefix) {
+	  if(typA[i] === this.anatomyNamePrefix) {
 	    /* Map anatomy surface hit to path if possible. */
 	    let g = objA[i].geometry;
-	    let an = self.getAnatomyConfig(namA[i]);
-	    if(self._isDefined(an) && self._isDefined(an.mapping) &&
-	       self._isDefined(g.index)  &&
-	       self._isDefined(g.attributes.position)){
+	    let an = this.getAnatomyConfig(namA[i]);
+	    if(this._isDefined(an) && this._isDefined(an.mapping) &&
+	       this._isDefined(g.index)  &&
+	       this._isDefined(g.attributes.position)){
 	      let t = triA[i] * 3;
 	      let ti = [g.index.array[t], g.index.array[t + 1],
 	                g.index.array[t + 2]];
 	      let p = g.attributes.position.array;
 	      let tv = new Array(3);
 	      let mp = new Array(3);
-	      for(j = 0; j < 3; ++j) {
-		v = ti[j] * 3;
+	      for(let j = 0; j < 3; ++j) {
+		let v = ti[j] * 3;
 		mp[j] = an.mapping[ti[i]];
 	        tv[j] = new THREE.Vector3(p[v], p[v + 1], p[v + 2]);
 	      }
 	      // Do barycentric interpolation in triangle
-	      tw = self._baryCoords(tv, posA[i]);
-	      pi = Math.floor(mp[0] * tw[0] + mp[1] * tw[1] + mp[2] * tw[2]);
+	      let tw = this._baryCoords(tv, posA[i]);
+	      let pi = Math.floor(mp[0] * tw[0] + 
+	          mp[1] * tw[1] + mp[2] * tw[2]);
 	      // Compute path coordinates
-	      let path = self._config.paths[self._curPath];
-	      pi = self._clamp(pi, 0, path.n - 1);
+	      let path = this._config.paths[this._curPath];
+	      pi = this._clamp(pi, 0, path.n - 1);
 	      posA[i] = path.points[pi];
 	    } else {
 	      // Something wrong, eg no mapping for anatomy so flag for removal
@@ -1174,7 +1236,7 @@ GCA3DRenderer = function(wind, cont, pick) {
 	}
 	/* Remove and invalid hits, flagged but undefined object */
 	for(let i = objA.length - 1; i >= 0; --i) {
-	  if(!self._isDefined(objA[i])) {
+	  if(!this._isDefined(objA[i])) {
             objA.splice(i, 1);
 	    typA.splice(i, 1);
             namA.splice(i, 1);
@@ -1183,8 +1245,10 @@ GCA3DRenderer = function(wind, cont, pick) {
 	}
       }
       if(objA.length > 0) {
-	self._pickerFn(ev, objA, typA, namA, posA);
+	this._pickerFn(ev, objA, typA, namA, posA);
       }
     }
   }
 }
+
+export {GCA3DRenderer};
