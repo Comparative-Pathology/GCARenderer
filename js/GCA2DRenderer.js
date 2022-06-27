@@ -1,13 +1,13 @@
 /*!
-* \file         GCA2DRenderer.js
-* \author       Bill Hill
-* \date         June 2021
-* \version      $Id$
-* \par
+* @file         GCA2DRenderer.js
+* @author       Bill Hill
+* @date         June 2021
+* @version      $Id$
+* @par
 * Address:
 *               Heriot-Watt University,
 *               Edinburgh, Scotland, EH14 4AS, UK
-* \par
+* @par
 * Copyright (C), [2021],
 * Heriot-Watt University, Edinburgh, UK.
 * 
@@ -26,123 +26,126 @@
 * License along with this program; if not, write to the Free
 * Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 * Boston, MA  02110-1301, USA.
-* \brief	A 2D rendering system created for the Gut Cell Atlas.
+* @brief	A 2D rendering system created for the Gut Cell Atlas.
 */
 
+/* globals alert, console, document, fabric, XMLHttpRequest */
 
 /*!
- * \function	GCA2DRenderer
- * \brief	Creates a Gut Cell Atlas renderer for displaying and
+ * @class	GCA2DRenderer
+ * @constructor
+ * @brief	Creates a Gut Cell Atlas renderer for displaying and
  * 		interacting with 2D models of the reference and gut,
  * 		mid-line paths through the gut, the mid-line paths,
  * 		landmarks and additional markers.
- * \param	win		Parent window.
- * \param	con		Parent container.
-   * \param	post_load_fn	Function to run when all models have been
-   * 				loaded if defined.
- * \param	pick_fn		Picking function called on pick events if
+ * @param	win		Parent window.
+ * @param	con		Parent container.
+ * @param	post_load_fn	Function to run when all models have been
+ * 				loaded if defined.
+ * @param	pick_fn		Picking function called on pick events if
  * 				defined.
  */
-GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
-  var self = this;
-  this.type = 'GCA2DRenderer';
-  Object.defineProperty(self, 'version', {value: '0.0.1', writable: false});
-  this._win = win;
-  this._container = con;
-  this._pick_fn = pick_fn;
-  this._post_load_fn = post_load_fn;
-  this._canvas = undefined;
-  this._config = undefined;
-  this._cursor = undefined;
-  this._pointer = {
-    button: 0,
-    drag: false,
-    drag_threshold_start:  9,
-    drag_threshold_end: 1,
-    position: new fabric.Point(0, 0)};
-  this._model_grp = undefined;
-  this._markers_grp = undefined;
-  this._landmarks_grp = undefined;
-  this._ref_image = undefined;
-  this._paths = undefined;
-  this._roi = undefined;
-  this._anat_images = {};
-  this._file_load_cnt = 0; // Used to wait for all files to be loaded
-  this._debug = true;
-  this._curPath = 0;	   // Current path
-  this._curPathIdx = 0;    // Index of position on current path
-  this._roiIdx = [0, 0];   // Indices defining the ROI on current path
-  this._debug = false;
-  this._icons = {
-    pin: {
-      url: 'icons/pin.svg',
-      prg: undefined},
-    cursor: {
-      url: 'icons/cursor.svg',
-      prg: undefined}};
-  this._mapGroupsGCAToDisp = {};
-  this._layers = {
-      REFERENCE_IMAGES: 10,
-      ANATOMY_IMAGES: 20,
-      PATHS: 40,
-      ROI: 50,
-      CURSOR: 60,
-      LANDMARKS: 70,
-      MARKERS: 80};
-  
+class GCA2DRenderer {
+  constructor(win, con, post_load_fn, pick_fn) {
+    this.type = 'GCA2DRenderer';
+    Object.defineProperty(this, 'version', {value: '2.0.0', writable: false});
+    this._win = win;
+    this._container = con;
+    this._pick_fn = pick_fn;
+    this._post_load_fn = post_load_fn;
+    this._canvas = undefined;
+    this._config = undefined;
+    this._cursor = undefined;
+    this._pointer = {
+      button: 0,
+      drag: false,
+      drag_threshold_start:  9,
+      drag_threshold_end: 1,
+      position: new fabric.Point(0, 0)};
+    this._model_grp = undefined;
+    this._markers_grp = undefined;
+    this._landmarks_grp = undefined;
+    this._ref_image = undefined;
+    this._paths = undefined;
+    this._roi = undefined;
+    this._anat_images = {};
+    this._file_load_cnt = 0; // Used to wait for all files to be loaded
+    this._debug = true;
+    this._curPath = 0;	   // Current path
+    this._curPathIdx = 0;    // Index of position on current path
+    this._roiIdx = [0, 0];   // Indices defining the ROI on current path
+    this._debug = false;
+    this._icons = {
+      pin: {
+	url: 'icons/pin.svg',
+	prg: undefined},
+      cursor: {
+	url: 'icons/cursor.svg',
+	prg: undefined}};
+    this._mapGroupsGCAToDisp = {};
+    this._layers = {
+	REFERENCE_IMAGES: 10,
+	ANATOMY_IMAGES: 20,
+	PATHS: 40,
+	ROI: 50,
+	CURSOR: 60,
+	LANDMARKS: 70,
+	MARKERS: 80};
+ }
+
   /*!
-   * \function	init
-   * \brief	Initialisation of the configuration and dsplay canvas.
-   * \param	cfg		Configuration file URL or configuration as
+   * @function	init
+   * @brief	Initialisation of the configuration and dsplay canvas.
+   * @param	cfg		Configuration file URL or configuration as
    * 				read from a valid configuration file.
    */
-  this.init = function(cfg) {
+  init(cfg) {
     let c = document.createElement('canvas');
     c.setAttribute('id', 'canvas');
-    self._container.appendChild(c);
-    self._canvas = new fabric.Canvas('canvas', {
+    this._container.appendChild(c);
+    this._canvas = new fabric.Canvas('canvas', {
 	selection: false,
 	fireRightClick: true,
 	stopContextMenu: true});
-    if(self._isArray(cfg)) {
+    if(this._isArray(cfg)) {
       cfg = cfg[0];
     }
     this._sortLandmarks(cfg);
-    self._config = cfg;
+    this._config = cfg;
     this._findDisplayProps();
-    if(this._isDefined(self._config.display_props.pick_precision)) {
-      self._config.display_props['pick_precision'] = 1.0;
+    if(this._isDefined(this._config.display_props.pick_precision)) {
+      this._config.display_props['pick_precision'] = 1.0;
     }
-    self._canvas.hoverCursor = 'default';
-    self._model_grp = new fabric.Group();
-    self._markers_grp = new fabric.Group();
-    self._landmarks_grp = new fabric.Group();
-    self._canvas.add(self._model_grp);
-    self._canvas.add(self._markers_grp);
-    self._canvas.add(self._landmarks_grp);
-    self._canvas.on('mouse:down', this._onMouseDown);
-    self._canvas.on('mouse:up', this._onMouseUp);
-    self._canvas.on('mouse:move', this._onMouseMove);
-    self._canvas.on('mouse:wheel', this._onMouseWheel);
-    self._container.onresize = this._onResize;
-    self._win.addEventListener('resize', this._onResize);
+    this._canvas.hoverCursor = 'default';
+    this._model_grp = new fabric.Group();
+    this._markers_grp = new fabric.Group();
+    this._landmarks_grp = new fabric.Group();
+    this._canvas.add(this._model_grp);
+    this._canvas.add(this._markers_grp);
+    this._canvas.add(this._landmarks_grp);
+    this._canvas.on('mouse:down', this._onMouseDown.bind(this));
+    this._canvas.on('mouse:up', this._onMouseUp.bind(this));
+    this._canvas.on('mouse:move', this._onMouseMove.bind(this));
+    this._canvas.on('mouse:wheel', this._onMouseWheel.bind(this));
+    this._container.onresize = this._onResize.bind(this);
+    this._win.addEventListener('resize', this._onResize.bind(this));
   }
 
   /*
-   * \function	getConfig
-   * \return	The configuration.
-   * \brief	Gets the configuration.
+   * @function	getConfig
+   * @return	The configuration.
+   * @brief	Gets the configuration.
    */
-  this.getConfig = function() {
-    return(self._config);
+  getConfig() {
+    return(this._config);
   }
 
   /*!
-   * \function	loadModels
-   * \brief	Loads all files required by the config file.
+   * @function	loadModels
+   * @brief	Loads all files required by the config file.
    *            the models to the renderer. 
    */
-  this.loadModels = function() {
+  loadModels() {
     this._startLoad();
     this._loadIcons();
     this._loadImages();
@@ -151,30 +154,30 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
   }
 
   /*!
-   * \function	setProperties
-   * \brief	Sets the properties of a single matching display item.
-   * \param	grp	GCA group of the item.
-   * \param	id	GCA id of the item.
-   * \param	prop	Properties to set.
+   * @function	setProperties
+   * @brief	Sets the properties of a single matching display item.
+   * @param	grp	GCA group of the item.
+   * @param	id	GCA id of the item.
+   * @param	prop	Properties to set.
    */
-  this.setProperties = function(grp, id, prop) {
+  setProperties(grp, id, prop) {
     let d_itm, d_grp; [d_grp, d_itm] = this.findDispObj(grp, id);
     if(this._isDefined(d_grp) && this._isDefined(d_itm)) {
       // TODO this will probably only work for opacity and visible
       d_itm.set(prop);
-      self._canvas.renderAll();
+      this._canvas.renderAll();
     }
   }
 
   /*!
-   * \function	getProperty
-   * \return	Property value or undefined if not found.
-   * \brief	Gets the value of a display item property.
-   * \param     grp     GCA group of the item.
-   * \param     id      GCA id of the item.
-   * \param	prop	Property to get the value of.
+   * @function	getProperty
+   * @return	Property value or undefined if not found.
+   * @brief	Gets the value of a display item property.
+   * @param     grp     GCA group of the item.
+   * @param     id      GCA id of the item.
+   * @param	prop	Property to get the value of.
    */
-  this.getProperty = function(grp, id, prop) {
+  getProperty(grp, id, prop) {
     let val = undefined;
     let d_itm, d_grp; [d_grp, d_itm] = this.findDispObj(grp, id);
     if(this._isDefined(d_grp) && this._isDefined(d_itm)) {
@@ -184,44 +187,44 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
   }
 
   /*!
-   * \function	setPosition
-   * \brief	Sets the current position along a path. This is defined
+   * @function	setPosition
+   * @brief	Sets the current position along a path. This is defined
    * 		by a proportion from the first to the second given landmark.
    * 		The position of the ROI is similarly defined using it's
    * 		start and end points.
-   * \param	pmk0		Id of the first current position landmark.
-   * \param	pmk1		Id of the second current position landmark.
-   * \param	pdt		Proportional distance from the first landmark
+   * @param	pmk0		Id of the first current position landmark.
+   * @param	pmk1		Id of the second current position landmark.
+   * @param	pdt		Proportional distance from the first landmark
    * 				to the second for the current position.
-   * \param	smk0		Id of the first start of ROI landmark.
-   * \param	smk1		Id of the second start of ROI landmark.
-   * \param	sdt		Proportional distance from the first start of
+   * @param	smk0		Id of the first start of ROI landmark.
+   * @param	smk1		Id of the second start of ROI landmark.
+   * @param	sdt		Proportional distance from the first start of
    * 				ROI landmark to the second.
-   * \param	emk0		Id of the first end of ROI landmark.
-   * \param	emk1		Id of the second end of ROI landmark.
-   * \param	edt		Proportional distance from the first end of
+   * @param	emk0		Id of the first end of ROI landmark.
+   * @param	emk1		Id of the second end of ROI landmark.
+   * @param	edt		Proportional distance from the first end of
    * 				ROI landmark to the second.
    */
-  this.setPosition = function(pmk0, pmk1, pdt,
+  setPosition(pmk0, pmk1, pdt,
   			      smk0, smk1, sdt,
 			      emk0, emk1, edt) {
-    let p = self._positionOnPath(pmk0, pmk1, pdt);
-    let rs = self._positionOnPath(smk0, smk1, sdt);
-    let re = self._positionOnPath(emk0, emk1, edt);
+    let p = this._positionOnPath(pmk0, pmk1, pdt);
+    let rs = this._positionOnPath(smk0, smk1, sdt);
+    let re = this._positionOnPath(emk0, emk1, edt);
     this._updatePosition(p[0], p[1], rs[1], re[1]);
   }
 
     /*!
-   * \function  _positionOnPath
-   * \return    Array of path index and position index along the path.
-   * \brief     Finds the position index on a path which is dst fraction
+   * @function  _positionOnPath
+   * @return    Array of path index and position index along the path.
+   * @brief     Finds the position index on a path which is dst fraction
    * 		from the landmark with id0 toward landmark with id1.
    * 		Both landmarks must be on the same path.
-   * \param     lmid0           First landmark with id0.
-   * \param     lmid1           Second landmark with id1.
-   * \param     dst             Proportional distance.
+   * @param     lmid0           First landmark with id0.
+   * @param     lmid1           Second landmark with id1.
+   * @param     dst             Proportional distance.
    */
-  this._positionOnPath = function(lmid0, lmid1, dst) {
+  _positionOnPath(lmid0, lmid1, dst) {
     let path = undefined;
     let index = undefined;
     let path_index = undefined;
@@ -229,10 +232,10 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
     let mpi = [-1, -1];
     let mp = [[], []];
     let li = 0;
-    let ll = self._config.landmarks.length;
+    let ll = this._config.landmarks.length;
     // Find landmarks and paths with matching ids
     while(((mi[0] < 0) || (mi[1] < 0)) && li < ll) {
-      let lmk = self._config.landmarks[li];
+      let lmk = this._config.landmarks[li];
       if(lmk.id === lmid0) {
         mi[0] = li;
         mp[0] = lmk.paths;
@@ -261,73 +264,73 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
         ++li;
       }
       if(path !== undefined) {
-	path_index = self._pathIdxFromID(path);
-        let i0 = self._config.landmarks[mi[0]].position[mpi[0]];
-        let i1 = self._config.landmarks[mi[1]].position[mpi[1]];
+	path_index = this._pathIdxFromID(path);
+        let i0 = this._config.landmarks[mi[0]].position[mpi[0]];
+        let i1 = this._config.landmarks[mi[1]].position[mpi[1]];
         index = i0 + Math.floor((i1 - i0) * dst);
-        index = this._clamp(index, 0, self._config.paths[path_index].n - 1);
+        index = this._clamp(index, 0, this._config.paths[path_index].n - 1);
       }
     }
     return([path_index, index]);
   }
 
     /*!
-   * \function  _updatePosition
-   * \brief     Update the rendering for a new current path position or
+   * @function  _updatePosition
+   * @brief     Update the rendering for a new current path position or
    *            new highlighted ROI.
-   * \param     path            Index of path for current position.
-   * \param     pathIdx         Index of position on path for current position.
-   * \param     roiIdxSrt       Index of position on path for start of ROI.
-   * \param     roiIdxEnd       Index of position on path for end of ROI.
+   * @param     path            Index of path for current position.
+   * @param     pathIdx         Index of position on path for current position.
+   * @param     roiIdxSrt       Index of position on path for start of ROI.
+   * @param     roiIdxEnd       Index of position on path for end of ROI.
    */
-  this._updatePosition = function(path, pathIdx, roiIdxSrt, roiIdxEnd) {
-    self._curPath = path;
-    self._curPathIdx = pathIdx;
-    let pd = self._config.paths[self._curPath];
+  _updatePosition(path, pathIdx, roiIdxSrt, roiIdxEnd) {
+    this._curPath = path;
+    this._curPathIdx = pathIdx;
+    let pd = this._config.paths[this._curPath];
     if(roiIdxSrt < 0) {
       roiIdxSrt = 0;
     }
     if(roiIdxEnd >= pd.n) {
       roiIdxEnd = pd.n - 1;
     }
-    self._roiIdx = [roiIdxSrt, roiIdxEnd];
+    this._roiIdx = [roiIdxSrt, roiIdxEnd];
     // Update cursor
-    let pos = pd.points[self._curPathIdx];
-    let tan = pd.tangents[self._curPathIdx];
+    let pos = pd.points[this._curPathIdx];
+    let tan = pd.tangents[this._curPathIdx];
     let rot = Math.floor(180 * Math.atan2(-tan.x, tan.y) / Math.PI);
-    self._cursor.set({angle: rot});
-    self._cursor.setPositionByOrigin(pos, 'center', 'center');
-    self._canvas.moveTo(self._cursor, self._layers['CURSOR']);
+    this._cursor.set({angle: rot});
+    this._cursor.setPositionByOrigin(pos, 'center', 'center');
+    this._canvas.moveTo(this._cursor, this._layers['CURSOR']);
     // Update roi
-    let cp = self._config.paths[self._curPath];
-    let gdp = self._config.display_props;
-    self._canvas.remove(self._roi);
-    self._roi = this._makePath(
-	cp.points.slice(self._roiIdx[0], self._roiIdx[1] + 1), cp.id, {
+    let cp = this._config.paths[this._curPath];
+    let gdp = this._config.display_props;
+    this._canvas.remove(this._roi);
+    this._roi = this._makePath(
+	cp.points.slice(this._roiIdx[0], this._roiIdx[1] + 1), cp.id, {
 	    color: this._parseColor(gdp.path_roi.color),
 	    width: gdp.path_roi.line_width,
 	    opacity: gdp.path_roi.opacity,
 	    visible: gdp.path_roi.visible});
-    self._model_grp.add(self._roi);
-    self._canvas.moveTo(self._roi, self._layers['ROI']);
-    self._mapGroupsGCAToDisp['ROI'] = self._model_grp;
+    this._model_grp.add(this._roi);
+    this._canvas.moveTo(this._roi, this._layers['ROI']);
+    this._mapGroupsGCAToDisp['ROI'] = this._model_grp;
     /* Make sure the display is updated. */
-    self._canvas.renderAll();
+    this._canvas.renderAll();
   }
 
   /*!
-   * \function	findDispObj
-   * \return	Array of display group and display object or array with
+   * @function	findDispObj
+   * @return	Array of display group and display object or array with
    * 		display object undefined if not found.
-   * \brief	Finds the first display object which has the same GCA group
+   * @brief	Finds the first display object which has the same GCA group
    * 		and GCA id. If the GCA id is undefined then the first
    * 		object with matching GCA group is found.
-   * \param	gca_grp GCA group of the object.
-   * \param     gca_id 	GCA id of the object.
+   * @param	gca_grp GCA group of the object.
+   * @param     gca_id 	GCA id of the object.
    */
-  this.findDispObj = function(gca_grp, gca_id) {
+  findDispObj(gca_grp, gca_id) {
     let d_itm = undefined;
-    let d_grp = self._mapGroupsGCAToDisp[gca_grp];
+    let d_grp = this._mapGroupsGCAToDisp[gca_grp];
     if(this._isDefined(d_grp)) {
       for(let i = 0; i < d_grp._objects.length; ++i) {
 	let itm = d_grp._objects[i];
@@ -343,22 +346,22 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
   }
 
   /*!
-   * \function	findAllDispObj
-   * \return	Array of arrays, with each inner array being the display
+   * @function	findAllDispObj
+   * @return	Array of arrays, with each inner array being the display
    *            group and display object found. If no matching objects are
    *            found then an empty array is returned.
-   * \brief	Finds all display objects which mave the same GCA group
+   * @brief	Finds all display objects which mave the same GCA group
    * 		and / or GCA id. If the GCA group is undefined then all
    * 		groups are searched, similarly if the GCA id is undefined
    * 		then all objects within the group(s) are found.
-   * \param	gca_grp GCA group of the object.
-   * \param     gca_id 	GCA id of the object.
+   * @param	gca_grp GCA group of the object.
+   * @param     gca_id 	GCA id of the object.
    */
-  this.findAllDispObj = function(gca_grp, gca_id) {
+  findAllDispObj(gca_grp, gca_id) {
     let objs = [];
-    for(let k in self._mapGroupsGCAToDisp) {
+    for(let k in this._mapGroupsGCAToDisp) {
       if((!this._isDefined(gca_grp)) || (k === gca_grp)) {
-        let d_grp = self._mapGroupsGCAToDisp[k];
+        let d_grp = this._mapGroupsGCAToDisp[k];
 	if(this._isDefined(d_grp)) {
 	  for(let i = 0; i < d_grp._objects.length; ++i) {
 	    let itm = d_grp._objects[i];
@@ -375,67 +378,68 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
   }
 
   /*!
-   * \function	_sortLandmarks
-   * \brief	Sorts the landmarks (in place) in the given configuration.
+   * @function	_sortLandmarks
+   * @brief	Sorts the landmarks (in place) in the given configuration.
    * 		This is done to ensure that landmarks are  ordered by their
    * 		position along (combined) paths and that we know the number
    * 		of landmarks.
-   * \param	cfg	Configuration.
+   * @param	cfg	Configuration.
    */
-  this._sortLandmarks = function(cfg) {
+  _sortLandmarks(cfg) {
     cfg.landmarks.sort((a, b) => {
       return(a.position[0] - b.position[0]);
     });
   }
 
   /*!
-   * \function  _findDisplayProps
-   * \brief	Find the global display properties and put them where
+   * @function  _findDisplayProps
+   * @brief	Find the global display properties and put them where
    * 		easily accessed in the config.
    */
-  this._findDisplayProps = function() {
-    for(const i in self._config.model_objects) {
-      let mo = self._config.model_objects[i];
+  _findDisplayProps() {
+    for(const i in this._config.model_objects) {
+      let mo = this._config.model_objects[i];
       if(this._isDefined(mo) && this._isDefined(mo.group) &&
          (mo.group === "GLOBAL_DISPLAY_PROP") &&
 	 this._isDefined(mo.display_props)) {
-        self._config['display_props'] = mo.display_props;
+        this._config['display_props'] = mo.display_props;
       }
     }
   }
 
   /*!
-   * \function	_loadIcons
-   * \brief	Loads the base marker icons. Currently only one.
+   * @function	_loadIcons
+   * @brief	Loads the base marker icons. Currently only one.
    */
-  this._loadIcons = function() {
-    for(const k in self._icons) {
-      this._loadSvg(self._icons[k].url, function(obj) {
-	self._icons[k].prg = obj;});
+  _loadIcons() {
+    for(const k in this._icons) {
+      this._loadSvg(this._icons[k].url, (obj) => {
+	this._icons[k].prg = obj;});
     }
   }
 
   /*!
-   * \function	_loadImages
-   * \brief	Loads the reference and anatomy images as specified in the
+   * @function	_loadImages
+   * @brief	Loads the reference and anatomy images as specified in the
    * 		config.
    */
-  this._loadImages = function() {
-    if(this._isDefined(self._config.model_objects)) {
-      for(im = 0; im < self._config.model_objects.length; ++im) {
-	let obj = self._config.model_objects[im];
+  _loadImages() {
+    if(this._isDefined(this._config.model_objects)) {
+      for(let im = 0; im < this._config.model_objects.length; ++im) {
+	let obj = this._config.model_objects[im];
 	switch(obj.group) {
 	  case 'REFERENCE_IMAGES':
-	    if(!this._isDefined(self._ref_image)) {
-	      this._loadImage(obj.filepath + '/' + obj.filename, function(img) {
-	        self._ref_image = img;
+	    if(!this._isDefined(this._ref_image)) {
+	      this._loadImage(obj.filepath + '/' + obj.filename, (img) => {
+	        this._ref_image = img;
 	      });
 	    }
 	    break;
 	  case 'ANATOMY_IMAGES':
-	    if(!this._isDefined(self._anat_images[obj.id])) {
-	      this._loadImage(obj.filepath + '/' + obj.filename, function(img) {
-	        self._anat_images[obj.id] = img;
+	    if(!this._isDefined(this._anat_images[obj.id])) {
+	      const obj1 = obj; // Make sure obj passed to function is correct
+	      this._loadImage(obj1.filepath + '/' + obj1.filename, (img) => {
+	        this._anat_images[obj1.id] = img;
 	      });
 	    }
 	    break;
@@ -447,11 +451,11 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
   }
 
   /*!
-   * \function	_loadPaths
-   * \brief	Loads the path data into the config using the URLs in
+   * @function	_loadPaths
+   * @brief	Loads the path data into the config using the URLs in
    *  		the config.
    *  		The paths are read from JSON files with the format:
-   * \verbatim
+   * @verbatim
      {
        "n": <number of points>,
        "points": [[x0,y0],...],
@@ -460,14 +464,15 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
      \endverbatim				  
      and converted to arrays of fabric.js points.
    */
-  this._loadPaths = function() {
-    for(let i = 0; i < self._config.paths.length; ++i) {
-      let path = self._config.paths[i];
+  _loadPaths() {
+    for(let i = 0; i < this._config.paths.length; ++i) {
+      let path = this._config.paths[i];
       let path_data;
-      this._loadJson(path.filepath + '/' + path.spline_filename, function(obj) {
-	path['n'] = obj.n;
-	path['points'] = obj.points;
-	path['tangents'] = obj.tangents;
+      const path1 = path; // Make sure path passed to function is correct
+      this._loadJson(path.filepath + '/' + path.spline_filename, (obj) => {
+	path1['n'] = obj.n;
+	path1['points'] = obj.points;
+	path1['tangents'] = obj.tangents;
 	let op = obj.points;
 	let ot = obj.tangents;
 	let np = [];
@@ -476,30 +481,30 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
 	  np[j] = new fabric.Point(op[j][0], op[j][1]);
 	  nt[j] = new fabric.Point(ot[j][0], ot[j][1]);
 	}
-	path['points'] = np;
-	path['tangents'] = nt;
+	path1['points'] = np;
+	path1['tangents'] = nt;
       });
-      this._loadJson(path.filepath + '/' + path.map_filename, function(obj) {
-        path['mapping'] = obj;
+      this._loadJson(path.filepath + '/' + path.map_filename, (obj) => {
+        path1['mapping'] = obj;
       });
     }
   }
 
   /*!
-   * \function _createVisualisation
-   * \brief	Creates the visualisation once all the files are loaded.
+   * @function _createVisualisation
+   * @brief	Creates the visualisation once all the files are loaded.
    */
-  this._createVisualisation = function() {
-    let dp = self._config.display_props;
+  _createVisualisation() {
+    let dp = this._config.display_props;
     /* Setup model objects. */
-    if(this._isDefined(self._config.model_objects)) {
+    if(this._isDefined(this._config.model_objects)) {
       /* We're using alpha compositing to render the images, which is order
        * dependant, so make sure the reference images are rendered first.
        * Here we do this by running through the model objects twice. */
-      for(pass = 0; pass < 2; ++pass) {
-	for(im = 0; im < self._config.model_objects.length; ++im) {
+      for(let pass = 0; pass < 2; ++pass) {
+	for(let im = 0; im < this._config.model_objects.length; ++im) {
 	  let img = undefined;
-	  let obj = self._config.model_objects[im];
+	  let obj = this._config.model_objects[im];
 	  let odp = obj.display_props;
 	  switch(obj.group) {
 	    case 'REFERENCE_IMAGES':
@@ -513,7 +518,7 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
 		if(!this._isDefined(odp.invert)) {
 		  odp['invert'] = false;
 		}
-		img = self._ref_image;
+		img = this._ref_image;
 		img.set({
 		    opacity: odp.opacity,
 		    selectable: false});
@@ -524,14 +529,14 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
 		  img.filters.push(flt);
 		  img.applyFilters();
 		}
-		self._model_grp.add(img);
-		self._canvas.moveTo(img, self._layers['REFERENCE_IMAGES']);
-		self._mapGroupsGCAToDisp['REFERENCE_IMAGES'] = self._model_grp;
+		this._model_grp.add(img);
+		this._canvas.moveTo(img, this._layers['REFERENCE_IMAGES']);
+		this._mapGroupsGCAToDisp['REFERENCE_IMAGES'] = this._model_grp;
 		}
 		break;
 	    case 'ANATOMY_IMAGES':
 	      if(pass != 0) {
-		img = self._anat_images[obj.id];
+		img = this._anat_images[obj.id];
 		if(this._isDefined(img)) {
 		  if(!this._isDefined(odp)) {
 		    obj['display_props'] = {};
@@ -551,9 +556,9 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
 		  img.applyFilters();
 		  img['gca_id'] = obj.id;
 		  img['gca_group'] = obj.group;
-		  self._model_grp.add(img);
-		  self._canvas.moveTo(img, self._layers['ANATOMY_IMAGES']);
-		  self._mapGroupsGCAToDisp['ANATOMY_IMAGES'] = self._model_grp;
+		  this._model_grp.add(img);
+		  this._canvas.moveTo(img, this._layers['ANATOMY_IMAGES']);
+		  this._mapGroupsGCAToDisp['ANATOMY_IMAGES'] = this._model_grp;
 		}
 	      }
 	      break;
@@ -564,40 +569,40 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
       }
     }
     /* Setup paths and region of interest highlight. */
-    if(this._isDefined(self._config.paths)) {
+    if(this._isDefined(this._config.paths)) {
       if(!this._isDefined(this._paths)) {
         this._paths = [];
       }
-      for(pi = 0; pi < self._config.paths.length; ++pi) {
-	let cp = self._config.paths[pi];
+      for(let pi = 0; pi < this._config.paths.length; ++pi) {
+	let cp = this._config.paths[pi];
 	let pdp = cp.display_props;
-        self._paths[pi] = this._makePath(cp.points, cp.id, {
+        this._paths[pi] = this._makePath(cp.points, cp.id, {
 	    color: this._parseColor(pdp.color),
 	    width: pdp.line_width,
 	    opacity: pdp.opacity,
 	    visible: pdp.is_visible});
-        self._model_grp.add(self._paths[pi]);
-	self._canvas.moveTo(self._paths[pi], self._layers['PATHS']);
-	self._mapGroupsGCAToDisp['PATHS'] = self._model_grp;
+        this._model_grp.add(this._paths[pi]);
+	this._canvas.moveTo(this._paths[pi], this._layers['PATHS']);
+	this._mapGroupsGCAToDisp['PATHS'] = this._model_grp;
       }
-      let cp = self._config.paths[self._curPathIdx];
-      self._roi = this._makePath(
-          cp.points.slice(self._roiIdx[0], self._roiIdx[1] + 1), cp.id, {
+      let cp = this._config.paths[this._curPathIdx];
+      this._roi = this._makePath(
+          cp.points.slice(this._roiIdx[0], this._roiIdx[1] + 1), cp.id, {
 	      color: this._parseColor(dp.path_roi.color),
 	      width: dp.path_roi.line_width,
 	      opacity: dp.path_roi.opacity,
 	      visible: dp.path_roi.visible});
-      self._model_grp.add(self._roi);
-      self._canvas.moveTo(self._roi, self._layers['ROI']);
-      self._mapGroupsGCAToDisp['ROI'] = self._model_grp;
+      this._model_grp.add(this._roi);
+      this._canvas.moveTo(this._roi, this._layers['ROI']);
+      this._mapGroupsGCAToDisp['ROI'] = this._model_grp;
     }
     /* Setup landmarks. */
-    if(this._isDefined(self._config.landmarks)) {
-      let lmks = self._config.landmarks;
-      for(il = 0; il < lmks.length; ++il) {
+    if(this._isDefined(this._config.landmarks)) {
+      let lmks = this._config.landmarks;
+      for(let il = 0; il < lmks.length; ++il) {
         let l = lmks[il];
-	let pi = self._pathIdxFromID(l.paths[0]);
-	let pth = self._config.paths[pi];
+	let pi = this._pathIdxFromID(l.paths[0]);
+	let pth = this._config.paths[pi];
 	let pos = pth.points[l.position[0]];
 	let ana = l.anatomy[0];
 	let ldp = this._isDefined(l.display_props)? l.display_props: l;
@@ -608,52 +613,52 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
         if(this._isDefined(ldp.label_offset) &&
 	   this._isArray(ldp.label_offset) &&
 	   (ldp.label_offset.length > 0)) {
-          let ms = self._config.display_props.marker_size;
+          let ms = this._config.display_props.marker_size;
 	  lbl_pos.x += ldp.label_offset[0] * ms;
-          lbl_pos.y += ldp.label_offset[1] * ms
+          lbl_pos.y += ldp.label_offset[1] * ms;
 	}
-	lbl = this._makeLabel(lbl_pos, ana.abbreviated_name,
+	let lbl = this._makeLabel(lbl_pos, ana.abbreviated_name,
 	                      l.id, 'LANDMARK_LABELS', {
-	    font_size: self._config.display_props.label_font_size,
+	    font_size: this._config.display_props.label_font_size,
 	    color: this._parseColor(ldp.color)});
-        self._landmarks_grp.add(lmk);
-        self._landmarks_grp.add(lbl);
-        self._canvas.moveTo(lmk, self._layers['LANDMARKS']);
-        self._canvas.moveTo(lbl, self._layers['LANDMARKS']);
-	self._mapGroupsGCAToDisp['LANDMARKS'] = self._landmarks_grp;
-	self._mapGroupsGCAToDisp['LANDMARK_LABELS'] = self._landmarks_grp;
+        this._landmarks_grp.add(lmk);
+        this._landmarks_grp.add(lbl);
+        this._canvas.moveTo(lmk, this._layers['LANDMARKS']);
+        this._canvas.moveTo(lbl, this._layers['LANDMARKS']);
+	this._mapGroupsGCAToDisp['LANDMARKS'] = this._landmarks_grp;
+	this._mapGroupsGCAToDisp['LANDMARK_LABELS'] = this._landmarks_grp;
       }
     }
     /* Create cursor. */
     let cdp = dp.cursor;
-    self._cursor = this._makeCursor({
+    this._cursor = this._makeCursor({
         color: cdp.color,
 	size: cdp.size});
-    self._cursor['gca_group'] = 'CURSOR';
-    self._model_grp.add(self._cursor);
-    self._canvas.moveTo(self._cursor, self._layers['CURSOR']);
-    self._mapGroupsGCAToDisp['CURSOR'] = self._model_grp;
+    this._cursor['gca_group'] = 'CURSOR';
+    this._model_grp.add(this._cursor);
+    this._canvas.moveTo(this._cursor, this._layers['CURSOR']);
+    this._mapGroupsGCAToDisp['CURSOR'] = this._model_grp;
     /* Other groups. */
-    self._mapGroupsGCAToDisp['MARKERS'] = self._markers_grp;
-    self._mapGroupsGCAToDisp['MARKER_LABELS'] = self._markers_grp;
+    this._mapGroupsGCAToDisp['MARKERS'] = this._markers_grp;
+    this._mapGroupsGCAToDisp['MARKER_LABELS'] = this._markers_grp;
     /* Set canvas size. */
-    self._onResize();
+    this._onResize();
   }
 
   /*!
-   * \function	_makeCursor
-   * \returns	New cursor object for display.
-   * \brief	Makes a new display object for display.
-   * \param	prop		Cursor properties which may include
+   * @function	_makeCursor
+   * @returns	New cursor object for display.
+   * @brief	Makes a new display object for display.
+   * @param	prop		Cursor properties which may include
    * 				color and size.
    */
-  this._makeCursor = function(prop) {
+  _makeCursor(prop) {
     const def = {
 	color: 0xffffff,
 	size: 11};
     let sz = this._defordef(prop, def, 'size');
     let color = this._parseColor(this._defordef(prop, def, 'color'));
-    let cursor = fabric.util.object.clone(self._icons['cursor'].prg);
+    let cursor = fabric.util.object.clone(this._icons['cursor'].prg);
     cursor.scaleToHeight(sz);
     cursor.set({stroke: color,
 		strokeWidth: (sz / 6) + 1,
@@ -662,15 +667,15 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
   }
 
   /*!
-   * \function	_makePath
-   * \returns	New path for display.
-   * \brief	Makes a new path for display.
-   * \param	pts	Array of fabric.js points for the path.
-   * \param	id	GCA id of the path.
-   * \param 	prop	Path properties which may include
+   * @function	_makePath
+   * @returns	New path for display.
+   * @brief	Makes a new path for display.
+   * @param	pts	Array of fabric.js points for the path.
+   * @param	id	GCA id of the path.
+   * @param 	prop	Path properties which may include
    * 			color, width, opacity, visible.
    */
-  this._makePath = function(pts, id, prop) {
+  _makePath(pts, id, prop) {
     const def = {
       color: 0xffffff,
       width: 3,
@@ -684,31 +689,31 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
              opacity: this._defordef(prop, def, 'opacity'),
 	     strokeWidth: this._defordef(prop, def, 'width'),
 	     visible: this._defordef(prop, def, 'visible')});
-    pth['gca_id'] = id,
+    pth['gca_id'] = id;
     pth['gca_group'] = 'PATHS';
     return(pth);
   }
 
   /*!
-   * \function _makeMarker
-   * \returns 	New marker for display.
-   * \brief	Makes a new marker for display by cloning one of the
+   * @function _makeMarker
+   * @returns 	New marker for display.
+   * @brief	Makes a new marker for display by cloning one of the
    * 		icons then setting the clones position and other properties.
-   * \param	key	Icon key.
-   * \param	pos	Required position for the marker.
-   * \param	id	GCA id for the marker.
-   * \param	grp	GCA group for the marker.
-   * \param	prop	Marker properties which may include
+   * @param	key	Icon key.
+   * @param	pos	Required position for the marker.
+   * @param	id	GCA id for the marker.
+   * @param	grp	GCA group for the marker.
+   * @param	prop	Marker properties which may include
    *			color, opacity, height, visible.
    */
-  this._makeMarker = function(key, pos, id, grp, prop) { 
+  _makeMarker(key, pos, id, grp, prop) { 
     const def = {
       color: 0xffffff,
       opacity: 1.0,
       marker_size: 24,
       visible: true};
-    let mrk = fabric.util.object.clone(self._icons[key].prg);
-    let hgt = this._defordef(self._config.display_props, def, 'marker_size');
+    let mrk = fabric.util.object.clone(this._icons[key].prg);
+    let hgt = this._defordef(this._config.display_props, def, 'marker_size');
     mrk.scaleToHeight(hgt);
     mrk['gca_id'] = id;
     mrk['gca_group'] = grp;
@@ -725,18 +730,18 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
   }
 
   /*!
-   * \function	_makeLabel
-   * \return	A label for display.
-   * \brief	Makes a new text label for display, setting the position
+   * @function	_makeLabel
+   * @return	A label for display.
+   * @brief	Makes a new text label for display, setting the position
    * 		and other properties.
-   * \param	pos	Required position for the label.
-   * \param	txt	Required text for the label.
-   * \param	id	GCA id for the label.
-   * \param	grp	GCA group for the label.
-   * \param	prop	Label properties which may include
+   * @param	pos	Required position for the label.
+   * @param	txt	Required text for the label.
+   * @param	id	GCA id for the label.
+   * @param	grp	GCA group for the label.
+   * @param	prop	Label properties which may include
    * 			color, font_size, opacity, visible.
    */
-  this._makeLabel = function(pos, txt, id, grp, prop) {
+  _makeLabel(pos, txt, id, grp, prop) {
     const def = {
       color: 0xffffff,
       font_size: 14,
@@ -758,15 +763,15 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
   }
 
   /*!
-   * \function	_pathIdxFromID
-   * \return	Index of the path or undefined.
-   * \brief	Given a GCA path id finds and returns the index of the
+   * @function	_pathIdxFromID
+   * @return	Index of the path or undefined.
+   * @brief	Given a GCA path id finds and returns the index of the
    * 		path in the array of paths.
-   * \parm	id	path id.
+   * @parm	id	path id.
    */
-  this._pathIdxFromID = function(id) {
+  _pathIdxFromID(id) {
     let pi = undefined;
-    let paths = self._config.paths;
+    let paths = this._config.paths;
     for(let i = 0; i < paths.length; ++i) {
       let p = paths[i];
       if(p.id == id) {
@@ -778,16 +783,16 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
   }
 
   /*!
-   * \function	_getObjValue
-   * \return	The value if the given coordinates are within the object's
+   * @function	_getObjValue
+   * @return	The value if the given coordinates are within the object's
    * 		domain, otherwise undefined.
-   * \brief	Gets the value of an encoded Woolz object at the given
+   * @brief	Gets the value of an encoded Woolz object at the given
    * 		coordinates.
-   * \param	map	The mapping object.
-   * \param	x	The column coordinate.
-   * \param	y	The line coordinate.
+   * @param	map	The mapping object.
+   * @param	x	The column coordinate.
+   * @param	y	The line coordinate.
    */
-  this._getObjValue = function(map, x, y) {
+  _getObjValue(map, x, y) {
     var vidx;
     var inside = false;
     var v = undefined;
@@ -802,7 +807,7 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
       var ivln = dom.intvlines[y];
       vidx = val.value_line_indices[y];
       for(let i = 0; !inside && (i < ivln.length); ++i) {
-        iv = ivln[i];
+        let iv = ivln[i];
         if((x >= iv[0]) && (x <= iv[1])) {
           vidx += x - iv[0];
           inside = true;
@@ -819,81 +824,84 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
   }
 
   /*! 
-   * \function 	mapPointToMidline
-   * \return	Point on midline or undefined.
-   * \brief	Maps the given fabric point to the midline of the current
+   * @function 	mapPointToMidline
+   * @return	Point on midline or undefined.
+   * @brief	Maps the given fabric point to the midline of the current
    * 		path if the given point is within the domain of the mapping.
-   * \param	Given point for mapping.
+   * @param	Given point for mapping.
    */
-  this.mapPointToMidline = function(p) {
-    let q = undefined;
-    let cp = self._config.paths[self._curPath];
-    let idx = self._getObjValue(cp.mapping, p.x, p.y);
+  mapPointToMidline(p) {
+    let pom = undefined;
+    let pp = undefined;
+    let cp = this._config.paths[this._curPath];
+    let idx = this._getObjValue(cp.mapping, p.x, p.y);
     if(typeof idx !== 'undefined') {
       // There may be a small mapping error so search small range for
       // closest point.
-      b = cp.points[idx];
+      pp = cp.points[idx];
     }
-    if(typeof idx !== 'undefined') {
-      q = {x: b.x, y: b.y, i: idx};
+    if(typeof pp !== 'undefined') {
+      pom = {x: pp.x, y: pp.y, i: idx};
     }
-    return(q);
+    return(pom);
   }
 
   /*!
-   * \function	addMarker
-   * \brief	Adds a marker (with an optional text label).
-   * \param	id		Reference id string for the marker.
-   * \param	pos		Position of the marker as a fabric point.
-   * \param	txt		Optional text for label (may be undefined).
-   * \param	props		Optional properties.
+   * @function	addMarker
+   * @brief	Adds a marker (with an optional text label).
+   * @param	id		Reference id string for the marker.
+   * @param	pos		Position of the marker as a fabric point.
+   * @param	txt		Optional text for label (may be undefined).
+   * @param	props		Optional properties.
    */
-  this.addMarker = function(id, pos, txt, props) {
+  addMarker(id, pos, txt, props) {
     let rad = 5;
     let spos = new fabric.Point(pos.x, pos.y);
     let mpos = this.mapPointToMidline(spos);
     let mapped = this._isDefined(mpos);
     if(mapped) {
       let mrk = this._makeMarker('pin', mpos, id, 'MARKERS', props);
-      self._markers_grp.add(mrk);
-      self._canvas.moveTo(mrk, self._layers['MARKERS']);
+      this._markers_grp.add(mrk);
+      this._canvas.moveTo(mrk, this._layers['MARKERS']);
       if(this._isDefined(txt)) {
         let lbl = this._makeLabel(mpos, txt, id, 'MARKER_LABELS', props);
-        self._markers_grp.add(lbl);
-        self._canvas.moveTo(lbl, self._layers['MARKERS']);
+        this._markers_grp.add(lbl);
+        this._canvas.moveTo(lbl, this._layers['MARKERS']);
       }
     }
   }
 
   /*!
-   * \function removeMarker
-   * \brief	Removes the marker (and it's optional text label) with the
+   * @function removeMarker
+   * @brief	Removes the marker (and it's optional text label) with the
    * 		given reference id.
-   * \param	Reference id string of the marker.
+   * @param	Reference id string of the marker.
    */
-  this.removeMarker = function(id) {
-    let m_itm, d_grp; [m_grp, m_itm] = this.findDispObj('MARKERS', id);
-    let l_itm, l_grp; [l_grp, l_itm] = this.findDispObj('MARKER_LABELS', id);
-    if(this._isDefined(m_grp) && this._isDefined(m_itm)) {
-      self._canvas.remove(m_itm);
-      self._markers_grp.remove(m_itm);
+  removeMarker(id) {
+    const itm = 1;
+    const grp = 0;
+    let mrk = this.findDispObj('MARKERS', id);
+    let lbl = this.findDispObj('MARKER_LABELS', id);
+    if(this._isDefined(mrk[grp]) && this._isDefined(mrk[itm])) {
+      this._canvas.remove(mrk[itm]);
+      this._markers_grp.remove(mrk[itm]);
     }
-    if(this._isDefined(l_grp) && this._isDefined(l_itm)) {
-      self._canvas.remove(l_itm);
-      self._markers_grp.remove(l_itm);
+    if(this._isDefined(lbl[grp]) && this._isDefined(lbl[itm])) {
+      this._canvas.remove(lbl[itm]);
+      this._markers_grp.remove(lbl[itm]);
     }
   }
 
 
   /*!
-   * \function  landmarkFromID
-   * \return	landmark config or undefined if not found
-   * \brief	Given a landmark's GCA id returns te given landmark.
-   * \param	id	Required landmark's GCA id
+   * @function  landmarkFromID
+   * @return	landmark config or undefined if not found
+   * @brief	Given a landmark's GCA id returns te given landmark.
+   * @param	id	Required landmark's GCA id
    */
-  this.landmarkFromID = function(id) {
+  landmarkFromID(id) {
     var lmk = undefined;
-    let lmks = self._config.landmarks;
+    let lmks = this._config.landmarks;
     for(let li = 0; li < lmks.length; ++li) {
       let l = lmks[li];
       if(l.id === id) {
@@ -905,20 +913,20 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
   }
 
   /*!
-   * \function  positionToPath
-   * \return    [<path>, <path position index>, <distance>] or undefined
-   * \brief	Finds a path which intersects the given position and then
+   * @function  positionToPath
+   * @return    [<path>, <path position index>, <distance>] or undefined
+   * @brief	Finds a path which intersects the given position and then
    * 		returns the path and path position index. If a path does
    * 		not pass within the tolerance distance from the position
    * 		then undefined is returned.
-   * \param	pos		Position coordinate.
-   * \param	tol		Tolerance distance.
+   * @param	pos		Position coordinate.
+   * @param	tol		Tolerance distance.
    */
-  this.positionToPath = function(pos, tol) {
+  positionToPath(pos, tol) {
     let fnd = [0, 0, Number.MAX_VALUE];
     let pv = new fabric.Point(pos.x, pos.y);
-    for(let pi = 0; pi < self._config.paths.length; ++pi) {
-      let path = self._config.paths[pi];
+    for(let pi = 0; pi < this._config.paths.length; ++pi) {
+      let path = this._config.paths[pi];
       for(let pj = 0; pj < path.n; ++pj) {
         let pp = path.points[pj];
 	let pq = new fabric.Point(pp.x - pv.x, pp.y - pv.y);
@@ -939,271 +947,273 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
   }
 
   /*!
-   * \function	_onMouseDown
-   * \brief	Responds to a mouse down event by making sure not in a drag
+   * @function	this
+   * @brief	Responds to a mouse down event by making sure not in a drag
    * 		state and recording the position.
-   * \param	e		Event.
+   * @param	e		Event.
    */
-  this._onMouseDown = function(e) {
-    self._pointer.button = e.button;
-    self._pointer.drag = false;
-    self._pointer.position = new fabric.Point(e.pointer.x, e.pointer.y);
+  _onMouseDown(e) {
+    this._pointer.button = e.button;
+    this._pointer.drag = false;
+    this._pointer.position = new fabric.Point(e.pointer.x, e.pointer.y);
   }
 
   /*!
-   * \function	_onMouseMove
-   * \brief	Responds to a mouse move event if the first mouse button is
+   * @function	_onMouseMove
+   * @brief	Responds to a mouse move event if the first mouse button is
    * 		down by panning the canvas recording the position.
-   * \param	e		Event.
+   * @param	e		Event.
    */
-  this._onMouseMove = function(e) {
-    if(self._pointer.button == 1) {
-      let del = new fabric.Point(e.pointer.x - self._pointer.position.x,
-                                 e.pointer.y - self._pointer.position.y);
+  _onMouseMove(e) {
+    if(this._pointer.button == 1) {
+      let del = new fabric.Point(e.pointer.x - this._pointer.position.x,
+                                 e.pointer.y - this._pointer.position.y);
       let del2 = (del.x * del.x) + (del.y * del.y);
-      if(del2 > self._pointer.drag_threshold_start) {
-        self._pointer.drag = true;
-      } else if(del2 < self._pointer.drag_threshold_end) {
-        self._pointer.drag = false;
+      if(del2 > this._pointer.drag_threshold_start) {
+        this._pointer.drag = true;
+      } else if(del2 < this._pointer.drag_threshold_end) {
+        this._pointer.drag = false;
       }
-      if(self._pointer.drag) {
-        self._canvas.relativePan(del);
+      if(this._pointer.drag) {
+        this._canvas.relativePan(del);
       }
-      self._pointer.position = new fabric.Point(e.pointer.x, e.pointer.y);
+      this._pointer.position = new fabric.Point(e.pointer.x, e.pointer.y);
     }
   }
 
   /*!
-   * \function	_onMouseUp
-   * \brief	Responds to a mouse up event by calling the client pick
+   * @function	_onMouseUp
+   * @brief	Responds to a mouse up event by calling the client pick
    * 		function (if defined and first mouse button was down)
    * 		then making sure not in a drag state.
-   * \param	e		Event.
+   * @param	e		Event.
    */
-  this._onMouseUp = function(e) {
-    if(self._pointer.button == 1)
+  _onMouseUp(e) {
+    if(this._pointer.button == 1)
     {
-      if(!self._pointer.drag) {
+      if(!this._pointer.drag) {
 	let pos = new fabric.Point(e.pointer.x, e.pointer.y);
-	let inv = fabric.util.invertTransform(self._canvas.viewportTransform);
+	let inv = fabric.util.invertTransform(this._canvas.viewportTransform);
 	pos = fabric.util.transformPoint(pos, inv);
-	if(self._isDefined(self._pick_fn)) {
-	  self._pick_fn(self, pos);
+	if(this._isDefined(this._pick_fn)) {
+	  this._pick_fn(this, pos);
 	}
       }
     }
-    self._pointer.drag = false;
-    self._pointer.button = 0;
+    this._pointer.drag = false;
+    this._pointer.button = 0;
   }
 
   /*!
-   * \function	_onMouseWheel
-   * \brief	Responds to a mouse wheel event by updating the canvas zoom.
-   * \param	opt	Object containing event.
+   * @function	_onMouseWheel
+   * @brief	Responds to a mouse wheel event by updating the canvas zoom.
+   * @param	opt	Object containing event.
    */
-  this._onMouseWheel = function(opt) {
+  _onMouseWheel(opt) {
     let e = opt.e;
-    self._updateZoom(new fabric.Point(e.offsetX, e.offsetY), e.deltaY);
+    this._updateZoom(new fabric.Point(e.offsetX, e.offsetY), e.deltaY);
     e.preventDefault();
   }
 
   /*!
-   * \function	_onResize
-   * \brief	Responds to a container resize event by resizing the canvas
+   * @function	_onResize
+   * @brief	Responds to a container resize event by resizing the canvas
    * 		and updating the canvas zoom.
    */
-  this._onResize = function() {
-    if(self._isDefined(self._container) && self._isDefined(self._canvas)) {
-      self._canvas.setHeight(self._container.clientHeight);
-      self._canvas.setWidth(self._container.clientWidth);
-      self._setZoom();
+  _onResize() {
+    if(this._isDefined(this._container) && this._isDefined(this._canvas)) {
+      this._canvas.setHeight(this._container.clientHeight);
+      this._canvas.setWidth(this._container.clientWidth);
+      this._setZoom();
     }
   }
 
   /*!
-   * \function	_setZoom
-   * \brief	Sets the canvas zoom so that the entire canvas can be
+   * @function	_setZoom
+   * @brief	Sets the canvas zoom so that the entire canvas can be
    * 		displayed in the container.
    */
-  this._setZoom = function() {
-    if(this._isDefined(self._canvas) && this._isDefined(self._ref_image)) {
-      let sx = self._canvas.width / self._ref_image.width;
-      let sy = self._canvas.height / self._ref_image.height;
+  _setZoom() {
+    if(this._isDefined(this._canvas) && this._isDefined(this._ref_image)) {
+      let sx = this._canvas.width / this._ref_image.width;
+      let sy = this._canvas.height / this._ref_image.height;
       let s = (sx < sy)? sx: sy;
       if(s > 1.0) {
         s = 1.0;
       }
-      let x = s * self._canvas.width / 2;
-      let y = s * self._canvas.height / 2;
-      // self._canvas.zoomToPoint(new fabric.Point(x, y), s);
-      self._canvas.zoomToPoint(new fabric.Point(0, 0), s);
-      if(self._debug) {
+      let x = s * this._canvas.width / 2;
+      let y = s * this._canvas.height / 2;
+      // this._canvas.zoomToPoint(new fabric.Point(x, y), s);
+      this._canvas.zoomToPoint(new fabric.Point(0, 0), s);
+      if(this._debug) {
         console.log('DEBUG viewportTransform ' +
-                    self._canvas.viewportTransform[0] + ' ' +
-                    self._canvas.viewportTransform[1] + ' ' +
-                    self._canvas.viewportTransform[2] + ' ' +
-                    self._canvas.viewportTransform[3] + ' ' +
-                    self._canvas.viewportTransform[4] + ' ' +
-                    self._canvas.viewportTransform[5]);
+                    this._canvas.viewportTransform[0] + ' ' +
+                    this._canvas.viewportTransform[1] + ' ' +
+                    this._canvas.viewportTransform[2] + ' ' +
+                    this._canvas.viewportTransform[3] + ' ' +
+                    this._canvas.viewportTransform[4] + ' ' +
+                    this._canvas.viewportTransform[5]);
       }
     }
   }
 
   /*!
-   * \function	_updateZoom
-   * \brief	Sets the canvas zoom about a given point given a delta.
-   * \param	pos		Centre point for zoom.
-   * \param	del		Delta value for zoom from which only the sign
+   * @function	_updateZoom
+   * @brief	Sets the canvas zoom about a given point given a delta.
+   * @param	pos		Centre point for zoom.
+   * @param	del		Delta value for zoom from which only the sign
    * 				is used.
    */
-  this._updateZoom = function(pos, del) {
-    let z = self._canvas.getZoom() * 0.95 ** Math.sign(del);
-    self._canvas.zoomToPoint(pos, z)
+  _updateZoom(pos, del) {
+    let z = this._canvas.getZoom() * Math.pow(0.95, Math.sign(del));
+    this._canvas.zoomToPoint(pos, z);
   }
 
 
   /*!
-   * \function	_loadJson
-   * \brief	Loads the JSON file at the given URL.
-   * \param	url		URL of the JSON file.
+   * @function	_loadJson
+   * @brief	Loads the JSON file at the given URL.
+   * @param	url		URL of the JSON file.
    */
-  this._loadJson = function(url, on_load) {
-    self._preLoad();
+  _loadJson(url, on_load) {
+    this._preLoad();
     let req = new XMLHttpRequest();
     req.open('GET', url, false);
-    req.onreadystatechange = function() {
+    req.overrideMimeType("text/html");
+    let rscf = function() {
       if(req.status === 200) {
-        obj = JSON.parse(req.responseText);
+        let obj = JSON.parse(req.responseText);
         on_load(obj);
-        self._postLoad();
+        this._postLoad();
       } else {
         alert('Failed to load JSON file ' + url + '.');
       }
-    }
+    };
+    req.onreadystatechange = rscf.bind(this);
     req.send();
   }
 
   /*!
-   * \function	_loadImage
-   * \brief	Loads an image from the given URL.
-   * \param     url             URL of the image file.
+   * @function	_loadImage
+   * @brief	Loads an image from the given URL.
+   * @param     url             URL of the image file.
    */
-  this._loadImage = function(url, on_load) {
-    self._preLoad();
-    fabric.Image.fromURL(url, function(img, err) {
+  _loadImage(url, on_load) {
+    this._preLoad();
+    fabric.Image.fromURL(url, (img, err) => {
       if(err) {
         alert('Failed to load image file ' + url + '.');
       } else {
 	on_load(img);
-	self._postLoad();
+	this._postLoad();
       }
     });
   }
 
   /*!
-   * \function	_loadSvg
-   * \brief	Loads an SVG object from the given URL.
-   * \param     url             URL of the SVG object.
+   * @function	_loadSvg
+   * @brief	Loads an SVG object from the given URL.
+   * @param     url             URL of the SVG object.
    */
-  this._loadSvg = function(url, on_load) {
-    self._preLoad();
-    fabric.loadSVGFromURL(url, function(obj) {
+  _loadSvg(url, on_load) {
+    this._preLoad();
+    fabric.loadSVGFromURL(url, (obj) => {
       on_load(fabric.util.groupSVGElements(obj));
-      self._postLoad();
+      this._postLoad();
     });
   }
 
   /*!
-   * \function	_startLoad
-   * \brief	Called before loading any files.
+   * @function	_startLoad
+   * @brief	Called before loading any files.
    */
-  this._startLoad = function() {
-    self._file_load_cnt = 1;
+  _startLoad() {
+    this._file_load_cnt = 1;
   }
 
   /*!
-   * \function  _preLoad
-   * \brief	Called before attempting to load required files. Must be
+   * @function  _preLoad
+   * @brief	Called before attempting to load required files. Must be
    * 		paired with _postLoad().
    */
-  this._preLoad = function() {
-    ++(self._file_load_cnt);
+  _preLoad() {
+    ++(this._file_load_cnt);
   }
 
   /*!
-   * \function  _postLoad
-   * \brief	Called after loading required file. Must be paired with
+   * @function  _postLoad
+   * @brief	Called after loading required file. Must be paired with
    * 		_preLoad().
    */
-  this._postLoad = function() {
-    --(self._file_load_cnt);
-    if(self._file_load_cnt <= 0) {
-      self._createVisualisation();
-      if(this._isDefined(self._post_load_fn)) {
-        self._post_load_fn();
+  _postLoad() {
+    --(this._file_load_cnt);
+    if(this._file_load_cnt <= 0) {
+      this._createVisualisation();
+      if(this._isDefined(this._post_load_fn)) {
+        this._post_load_fn();
       }
     }
   }
 
   /*!
-   * \function	_endLoad
-   * \brief	Called after all files have been set loading.
+   * @function	_endLoad
+   * @brief	Called after all files have been set loading.
    */
-  this._endLoad = function() {
+  _endLoad() {
     this._postLoad();
   }
 
   /*!
-   * \function	_isDefined
-   * \return    True of false.
-   * \brief	Test is given parameter is defined.
-   * \param	obj			Given parameter.
+   * @function	_isDefined
+   * @return    True of false.
+   * @brief	Test is given parameter is defined.
+   * @param	obj			Given parameter.
    */
-  this._isDefined = function(x) {
+  _isDefined(x) {
     return(typeof x !== 'undefined');
   }
 
   /*!
-   * \function	_isObject
-   * \return    True of false.
-   * \brief	Test is given parameter is an object.
-   * \param	obj			Given parameter.
+   * @function	_isObject
+   * @return    True of false.
+   * @brief	Test is given parameter is an object.
+   * @param	obj			Given parameter.
    */
-  this._isObject = function(x) {
+  _isObject(x) {
     return(typeof x == 'object');
   }
 
   /*!
-   * \function  _isArray
-   * \return	True of false.
-   * \brief	Test if given object is an array.
-   * \param	obj			Given object.
+   * @function  _isArray
+   * @return	True of false.
+   * @brief	Test if given object is an array.
+   * @param	obj			Given object.
    */
-  this._isArray = function(obj) {
+  _isArray(obj) {
     return(Object.prototype.toString.call(obj) === '[object Array]');
   }
 
   /*!
-   * \function  _isString
-   * \return	True of false.
-   * \brief	Test if given object is a string.
-   * \param	obj			Given object.
+   * @function  _isString
+   * @return	True of false.
+   * @brief	Test if given object is a string.
+   * @param	obj			Given object.
    */
-  this._isString = function(obj) {
+  _isString(obj) {
     return(Object.prototype.toString.call(obj) === '[object String]');
   }
 
   /*!
-   * \function	_deforder
-   * \return	Given object or given default object.
-   * \brief	If defined returns the value with the given key from the
+   * @function	_deforder
+   * @return	Given object or given default object.
+   * @brief	If defined returns the value with the given key from the
    * 		given object, else returns corresponding default value
    * 		of undefined if the key is not in the default values.	
-   * \param	g			Given object.
-   * \param	d			Default object.
-   * \param	key			Key for given and default object.
+   * @param	g			Given object.
+   * @param	d			Default object.
+   * @param	key			Key for given and default object.
    */
-  this._defordef = function(g, d, key) {
+  _defordef(g, d, key) {
    let v = undefined;
    if(this._isDefined(g) && (key in g) && this._isDefined(g[key])) {
      v = g[key];
@@ -1214,30 +1224,30 @@ GCA2DRenderer = function(win, con, post_load_fn, pick_fn) {
   }
 
   /*!
-   * \function	_clamp
-   * \return	Clamped vlue.
-   * \brief	Clamps the given value to given range.
-   * \param	v		Given value.
-   * \param	mn		Minimum value of range.
-   * \param	mx		Maximum value of range.
+   * @function	_clamp
+   * @return	Clamped vlue.
+   * @brief	Clamps the given value to given range.
+   * @param	v		Given value.
+   * @param	mn		Minimum value of range.
+   * @param	mx		Maximum value of range.
    */
-  this._clamp = function(v, mn, mx) {
+  _clamp(v, mn, mx) {
     return(v < mn? mn: v > mx ? mx: v);
   }
 
   /*!
-   * \function 	_parseColor
-   * \return	Color in suitable form.
-   * \brief	If the given colour is represented as a string of the form
+   * @function 	_parseColor
+   * @return	Color in suitable form.
+   * @brief	If the given colour is represented as a string of the form
    * 		0xHHHHHH then replace the leading '0x' with '#'.
    */
-  this._parseColor = function(gc) {
+  _parseColor(gc) {
+    let nc = gc;
     if(this._isString(gc)) {
       nc = gc.replace('0x', '#');
-    } else {
-      nc = gc;
     }
     return(nc);
   }
-
 }
+
+export {GCA2DRenderer};
