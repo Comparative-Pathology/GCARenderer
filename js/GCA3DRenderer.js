@@ -51,7 +51,7 @@ class GCA3DRenderer {
   constructor(wind, cont, pick) {
     this.type = 'GCA3DRenderer';
     this._config = undefined;
-    Object.defineProperty(this, 'version', {value: '2.0.0', writable: false});
+    Object.defineProperty(this, 'version', {value: '2.0.1', writable: false});
     this._pickerFn = pick;
     this._curPath = 0;	   	// Current path
     this._curPathIdx = 0;     	// Index of position on current path
@@ -1020,6 +1020,7 @@ class GCA3DRenderer {
     let tangents = pd.tangents.slice(this._roiIdx[0], this._roiIdx[1]);
     if(this._ren.getObjectByName(name)) {
       this._ren.updateModel({name: name,
+	  bloom: true,
 	  vertices:   vertices,
 	  tangents:   tangents});
     } else {
