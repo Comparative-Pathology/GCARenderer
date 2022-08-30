@@ -48,7 +48,7 @@
 class GCA2DRenderer {
   constructor(win, con, post_load_fn, pick_fn) {
     this.type = 'GCA2DRenderer';
-    Object.defineProperty(this, 'version', {value: '2.0.0', writable: false});
+    Object.defineProperty(this, 'version', {value: '2.1.0', writable: false});
     this._win = win;
     this._container = con;
     this._pick_fn = pick_fn;
@@ -65,9 +65,16 @@ class GCA2DRenderer {
     this._model_grp = undefined;
     this._markers_grp = undefined;
     this._landmarks_grp = undefined;
+    this._bloom_grp = undefined;
     this._ref_image = undefined;
     this._paths = undefined;
     this._roi = undefined;
+    this._bloom = {
+      enabled: true,
+      contrast: 0.75,
+      brightness: 0.75,
+      opacity: 0.5,
+      radius: 20};
     this._anat_images = {};
     this._file_load_cnt = 0; // Used to wait for all files to be loaded
     this._debug = true;
@@ -83,14 +90,18 @@ class GCA2DRenderer {
 	url: 'icons/cursor.svg',
 	prg: undefined}};
     this._mapGroupsGCAToDisp = {};
-    this._layers = {
-	REFERENCE_IMAGES: 10,
-	ANATOMY_IMAGES: 20,
-	PATHS: 40,
-	ROI: 50,
-	CURSOR: 60,
-	LANDMARKS: 70,
-	MARKERS: 80};
+    this._layerKeys = [
+	'REFERENCE_IMAGES',
+	'ANATOMY_IMAGES',
+	'PATHS',
+	'ROI',
+	'CURSOR',
+	'LANDMARKS',
+	'LANDMARK_LABELS',
+	'MARKERS',
+	'MARKER_LABELS',
+	'BLOOM'];
+    this._layers = {};
  }
 
   /*!
@@ -100,6 +111,7 @@ class GCA2DRenderer {
    * 				read from a valid configuration file.
    */
   init(cfg) {
+    // Canvas
     let c = document.createElement('canvas');
     c.setAttribute('id', 'canvas');
     this._container.appendChild(c);
@@ -107,6 +119,8 @@ class GCA2DRenderer {
 	selection: false,
 	fireRightClick: true,
 	stopContextMenu: true});
+    this._canvas.hoverCursor = 'default';
+    // Configuration
     if(this._isArray(cfg)) {
       cfg = cfg[0];
     }
@@ -116,13 +130,31 @@ class GCA2DRenderer {
     if(this._isDefined(this._config.display_props.pick_precision)) {
       this._config.display_props['pick_precision'] = 1.0;
     }
-    this._canvas.hoverCursor = 'default';
+    // Layers
+    let nlk = this._layerKeys.length;
+    for(let i = 0; i < nlk; ++i) {
+      this._layers[this._layerKeys[i]] = Math.floor((i + 1) * 99 / nlk);
+    }
+    // Display groups
     this._model_grp = new fabric.Group();
     this._markers_grp = new fabric.Group();
     this._landmarks_grp = new fabric.Group();
+    this._bloom_grp = new fabric.Group();
     this._canvas.add(this._model_grp);
     this._canvas.add(this._markers_grp);
     this._canvas.add(this._landmarks_grp);
+    this._canvas.add(this._bloom_grp);
+    this._mapGroupsGCAToDisp['REFERENCE_IMAGES'] = this._model_grp;
+    this._mapGroupsGCAToDisp['ANATOMY_IMAGES'] = this._model_grp;
+    this._mapGroupsGCAToDisp['PATHS'] = this._model_grp;
+    this._mapGroupsGCAToDisp['ROI'] = this._model_grp;
+    this._mapGroupsGCAToDisp['CURSOR'] = this._model_grp;
+    this._mapGroupsGCAToDisp['LANDMARKS'] = this._landmarks_grp;
+    this._mapGroupsGCAToDisp['LANDMARK_LABELS'] = this._landmarks_grp;
+    this._mapGroupsGCAToDisp['MARKERS'] = this._markers_grp;
+    this._mapGroupsGCAToDisp['MARKER_LABELS'] = this._markers_grp;
+    this._mapGroupsGCAToDisp['BLOOM'] = this._bloom_grp;
+    // Interaction
     this._canvas.on('mouse:down', this._onMouseDown.bind(this));
     this._canvas.on('mouse:up', this._onMouseUp.bind(this));
     this._canvas.on('mouse:move', this._onMouseMove.bind(this));
@@ -165,7 +197,7 @@ class GCA2DRenderer {
     if(this._isDefined(d_grp) && this._isDefined(d_itm)) {
       // TODO this will probably only work for opacity and visible
       d_itm.set(prop);
-      this._canvas.renderAll();
+      this._renderAll();
     }
   }
 
@@ -304,20 +336,21 @@ class GCA2DRenderer {
     // Update roi
     let cp = this._config.paths[this._curPath];
     let gdp = this._config.display_props;
+    this._model_grp.remove(this._roi);
     this._canvas.remove(this._roi);
     this._roi = this._makePath(
 	cp.points.slice(this._roiIdx[0], this._roiIdx[1] + 1), cp.id, {
 	    color: this._parseColor(gdp.path_roi.color),
 	    width: gdp.path_roi.line_width,
 	    opacity: gdp.path_roi.opacity,
+	    bloom: true,
 	    visible: gdp.path_roi.visible});
     this._model_grp.add(this._roi);
     this._canvas.moveTo(this._roi, this._layers['ROI']);
-    this._mapGroupsGCAToDisp['ROI'] = this._model_grp;
-    /* Make sure the display is updated. */
-    this._canvas.renderAll();
+    // Update display
+    this._renderAll();
   }
-
+  
   /*!
    * @function	findDispObj
    * @return	Array of display group and display object or array with
@@ -325,7 +358,7 @@ class GCA2DRenderer {
    * @brief	Finds the first display object which has the same GCA group
    * 		and GCA id. If the GCA id is undefined then the first
    * 		object with matching GCA group is found.
-   * @param	gca_grp GCA group of the object.
+   * @param	gca_grp GCA group of the object.GCA2DRenderer.js
    * @param     gca_id 	GCA id of the object.
    */
   findDispObj(gca_grp, gca_id) {
@@ -531,7 +564,6 @@ class GCA2DRenderer {
 		}
 		this._model_grp.add(img);
 		this._canvas.moveTo(img, this._layers['REFERENCE_IMAGES']);
-		this._mapGroupsGCAToDisp['REFERENCE_IMAGES'] = this._model_grp;
 		}
 		break;
 	    case 'ANATOMY_IMAGES':
@@ -558,7 +590,6 @@ class GCA2DRenderer {
 		  img['gca_group'] = obj.group;
 		  this._model_grp.add(img);
 		  this._canvas.moveTo(img, this._layers['ANATOMY_IMAGES']);
-		  this._mapGroupsGCAToDisp['ANATOMY_IMAGES'] = this._model_grp;
 		}
 	      }
 	      break;
@@ -583,7 +614,6 @@ class GCA2DRenderer {
 	    visible: pdp.is_visible});
         this._model_grp.add(this._paths[pi]);
 	this._canvas.moveTo(this._paths[pi], this._layers['PATHS']);
-	this._mapGroupsGCAToDisp['PATHS'] = this._model_grp;
       }
       let cp = this._config.paths[this._curPathIdx];
       this._roi = this._makePath(
@@ -594,7 +624,6 @@ class GCA2DRenderer {
 	      visible: dp.path_roi.visible});
       this._model_grp.add(this._roi);
       this._canvas.moveTo(this._roi, this._layers['ROI']);
-      this._mapGroupsGCAToDisp['ROI'] = this._model_grp;
     }
     /* Setup landmarks. */
     if(this._isDefined(this._config.landmarks)) {
@@ -625,8 +654,6 @@ class GCA2DRenderer {
         this._landmarks_grp.add(lbl);
         this._canvas.moveTo(lmk, this._layers['LANDMARKS']);
         this._canvas.moveTo(lbl, this._layers['LANDMARKS']);
-	this._mapGroupsGCAToDisp['LANDMARKS'] = this._landmarks_grp;
-	this._mapGroupsGCAToDisp['LANDMARK_LABELS'] = this._landmarks_grp;
       }
     }
     /* Create cursor. */
@@ -637,10 +664,6 @@ class GCA2DRenderer {
     this._cursor['gca_group'] = 'CURSOR';
     this._model_grp.add(this._cursor);
     this._canvas.moveTo(this._cursor, this._layers['CURSOR']);
-    this._mapGroupsGCAToDisp['CURSOR'] = this._model_grp;
-    /* Other groups. */
-    this._mapGroupsGCAToDisp['MARKERS'] = this._markers_grp;
-    this._mapGroupsGCAToDisp['MARKER_LABELS'] = this._markers_grp;
     /* Set canvas size. */
     this._onResize();
   }
@@ -680,6 +703,7 @@ class GCA2DRenderer {
       color: 0xffffff,
       width: 3,
       opacity: 1.0,
+      bloom: false,
       visible: true
     };
     let pth = new fabric.Polyline(pts, {
@@ -691,6 +715,7 @@ class GCA2DRenderer {
 	     visible: this._defordef(prop, def, 'visible')});
     pth['gca_id'] = id;
     pth['gca_group'] = 'PATHS';
+    pth['bloom'] = this._defordef(prop, def, 'bloom');
     return(pth);
   }
 
@@ -1069,6 +1094,117 @@ class GCA2DRenderer {
     this._canvas.zoomToPoint(pos, z);
   }
 
+  /*!
+   * @function	_objToBloomImage
+   * @return	Image rendered from object.
+   * @brief	Creates a new image rendered from the given object with
+   * 		bloom.
+   * @param	obj		Object to be rendered to an image.
+   * @param	bloom		The bloom parameters.
+   */
+  _objToBloomImage(obj, bloom) {
+    let bnd = obj.getBoundingRect();
+    bnd.left -= bloom.radius;
+    bnd.top -= bloom.radius;
+    bnd.width += 2 * bloom.radius;
+    bnd.height += 2 * bloom.radius;
+    let fac = this._clamp(
+        5 * bloom.radius / this._max([bnd.width, bnd.height]), 0.0, 1.0);
+    let img = this._renderObjsToImage([obj], this._canvas, bnd, 1.0);
+    let flt0 = new fabric.Image.filters.Blur({blur: fac});
+    let flt1 = new fabric.Image.filters.Contrast({contrast: bloom.contrast});
+    let flt2 = new fabric.Image.filters.Brightness({brightness: bloom.brightness});
+    img.filters.push(flt0);
+    img.filters.push(flt1);
+    img.filters.push(flt2);
+    img.applyFilters();
+    img.set({opacity: bloom.opacity});
+    return(img);
+  }
+
+  /*!
+   * @function	_renderObjsToImage
+   * @return	Image rendered from object.
+   * @brief	Creates a new image which contains a rendering of the given
+   * 		objects.
+   * @param	objs		Array of objects to render to an image.
+   * @param	canvas		The current rendering canvas. This has
+   * 				parameters saved, modified and then restored.
+   * @param	bnd		The boundary of the required image {left,
+   * 				top, width, height}.
+   * @param	scale		Scale parameter for rendering.
+   */
+  _renderObjsToImage(objs, canvas, bnd, scale){
+    let img = undefined;
+    // Save canvas properties
+    let	saved = {
+	  width: canvas.width,
+	  height: canvas.height,
+	  interactive: canvas.interactive,
+	  contextTop: canvas.contextTop,
+	  enableRetinaScaling: canvas.enableRetinaScaling,
+	  viewportTransform: canvas.viewportTransform};
+    let scaledZoom = canvas.getZoom() * scale;
+    let scaledSize = {width: bnd.width * scale, height: bnd.height * scale};
+    // Temporarily modify the given canvas
+    let cve = fabric.util.createCanvasElement();
+    cve.width = scaledSize.width;
+    cve.height = scaledSize.height;
+    canvas.contextTop = null;
+    canvas.enableRetinaScaling = false;
+    canvas.interactive = false;
+    canvas.viewportTransform = [1.0, 0, 0, 1.0, -bnd.left, -bnd.top];
+    canvas.width = scaledSize.width;
+    canvas.height = scaledSize.height;
+    // Render objects
+    canvas.calcViewportBoundaries();
+    canvas.renderCanvas(cve.getContext('2d'), objs);
+    // Restore canvas properties
+    canvas.viewportTransform = saved.viewportTransform;
+    canvas.width = saved.width;
+    canvas.height = saved.height;
+    canvas.calcViewportBoundaries();
+    canvas.interactive = saved.interactive;
+    canvas.enableRetinaScaling = saved.enableRetinaScaling;
+    canvas.contextTop = saved.contextTop;
+    img = new fabric.Image(cve);
+    img.set(bnd);
+    return(img);
+  }
+
+  /*! @function	_renderAll
+   * @brief	Renders all objects on the canvas. If bloom is enabled
+   * 		then this involves two passes through the objects.
+   */
+  _renderAll() {
+    /* Remove any existing bloom images. */
+    while(this._bloom_grp._objects.length) {
+      let obj = this._bloom_grp._objects.pop();
+      this._canvas.remove(obj);
+    }
+    /* Compute any new bloom images. */
+    if(this._bloom.enabled) {
+      for(let layer in this._layers) {
+	if(layer !== 'BLOOM') {
+	  let d_grp = this._mapGroupsGCAToDisp[layer];
+	  if(this._isDefined(d_grp)) {
+	    for(let i = 0; i < d_grp._objects.length; ++i) {
+	      let obj = d_grp._objects[i];
+	      if(this._isDefined(obj) && this._isDefined(obj.bloom) &&
+		 (obj.bloom == true)) {
+		let img = this._objToBloomImage(obj, this._bloom);
+		img.set({selectable: false});
+		this._bloom_grp.add(img);
+		this._canvas.moveTo(img, this._layers['BLOOM']);
+	      }
+	    }
+	  }
+	}
+      }
+    }
+    this._canvas.renderAll();
+  }
+
 
   /*!
    * @function	_loadJson
@@ -1224,8 +1360,42 @@ class GCA2DRenderer {
   }
 
   /*!
+   * @function	_max
+   * @return	Maximum value.
+   * @brief	Finds the minimum of the given values.
+   * @param	vals		Given values.
+   */
+  _max(vals) {
+    let v = vals[0];
+    for(let i = 1; i < vals.length; ++i) {
+      let u = vals[i];
+      if(u > v) {
+        v = u;
+      }
+    }
+    return(v);
+  }
+
+  /*!
+   * @function	_min
+   * @return	Minimum value.
+   * @brief	Finds the minimum of the given values.
+   * @param	vals		Given values.
+   */
+  _min(vals) {
+    let v = vals[0];
+    for(let i = 1; i < vals.length; ++i) {
+      let u = vals[i];
+      if(u < v) {
+        v = u;
+      }
+    }
+    return(v);
+  }
+
+  /*!
    * @function	_clamp
-   * @return	Clamped vlue.
+   * @return	Clamped value.
    * @brief	Clamps the given value to given range.
    * @param	v		Given value.
    * @param	mn		Minimum value of range.
