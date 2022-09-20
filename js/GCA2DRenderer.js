@@ -48,7 +48,7 @@
 class GCA2DRenderer {
   constructor(win, con, post_load_fn, pick_fn) {
     this.type = 'GCA2DRenderer';
-    Object.defineProperty(this, 'version', {value: '2.1.0', writable: false});
+    Object.defineProperty(this, 'version', {value: '2.2.0', writable: false});
     this._win = win;
     this._container = con;
     this._pick_fn = pick_fn;
@@ -66,6 +66,7 @@ class GCA2DRenderer {
     this._markers_grp = undefined;
     this._landmarks_grp = undefined;
     this._bloom_grp = undefined;
+    this._tracks_grp = undefined;
     this._ref_image = undefined;
     this._paths = undefined;
     this._roi = undefined;
@@ -73,7 +74,7 @@ class GCA2DRenderer {
       enabled: true,
       contrast: 0.75,
       brightness: 0.75,
-      opacity: 0.5,
+      opacity: 0.75,
       radius: 20};
     this._anat_images = {};
     this._file_load_cnt = 0; // Used to wait for all files to be loaded
@@ -89,19 +90,23 @@ class GCA2DRenderer {
       cursor: {
 	url: 'icons/cursor.svg',
 	prg: undefined}};
-    this._mapGroupsGCAToDisp = {};
-    this._layerKeys = [
-	'REFERENCE_IMAGES',
+    this._mapGCAGrpToDispGrp = {};
+    this._dispKeys = [ 		// Layer and display group keys
+	'REFERENCE_IMAGES',     // First layer, all over it
 	'ANATOMY_IMAGES',
 	'PATHS',
+	'TRACKS',
 	'ROI',
 	'CURSOR',
 	'LANDMARKS',
-	'LANDMARK_LABELS',
 	'MARKERS',
-	'MARKER_LABELS',
-	'BLOOM'];
-    this._layers = {};
+	'BLOOM'];		// Last layer, over all others
+    this._dispLayers = {};
+    this._dispGroups = {};
+    this._tracks = [];
+    this.nameSep = '-';
+    this.pathNamePrefix = 'path';
+    this.trackNamePrefix = 'track';
  }
 
   /*!
@@ -130,30 +135,36 @@ class GCA2DRenderer {
     if(this._isDefined(this._config.display_props.pick_precision)) {
       this._config.display_props['pick_precision'] = 1.0;
     }
-    // Layers
-    let nlk = this._layerKeys.length;
+    if(this._isDefined(this._config.display_props.path_roi.line_width)) {
+      this._bloom.radius = 1.5 * this._config.display_props.path_roi.line_width;
+    }
+    // Layers and display groups
+    let nlk = this._dispKeys.length;
     for(let i = 0; i < nlk; ++i) {
-      this._layers[this._layerKeys[i]] = Math.floor((i + 1) * 99 / nlk);
+      let k = this._dispKeys[i];
+      this._dispLayers[k] = Math.floor((i + 1) * 99 / nlk);
+      this._dispGroups[k] = new fabric.Group();
     }
     // Display groups
     this._model_grp = new fabric.Group();
     this._markers_grp = new fabric.Group();
     this._landmarks_grp = new fabric.Group();
+    this._tracks_grp = new fabric.Group();
     this._bloom_grp = new fabric.Group();
     this._canvas.add(this._model_grp);
     this._canvas.add(this._markers_grp);
     this._canvas.add(this._landmarks_grp);
+    this._canvas.add(this._tracks_grp);
     this._canvas.add(this._bloom_grp);
-    this._mapGroupsGCAToDisp['REFERENCE_IMAGES'] = this._model_grp;
-    this._mapGroupsGCAToDisp['ANATOMY_IMAGES'] = this._model_grp;
-    this._mapGroupsGCAToDisp['PATHS'] = this._model_grp;
-    this._mapGroupsGCAToDisp['ROI'] = this._model_grp;
-    this._mapGroupsGCAToDisp['CURSOR'] = this._model_grp;
-    this._mapGroupsGCAToDisp['LANDMARKS'] = this._landmarks_grp;
-    this._mapGroupsGCAToDisp['LANDMARK_LABELS'] = this._landmarks_grp;
-    this._mapGroupsGCAToDisp['MARKERS'] = this._markers_grp;
-    this._mapGroupsGCAToDisp['MARKER_LABELS'] = this._markers_grp;
-    this._mapGroupsGCAToDisp['BLOOM'] = this._bloom_grp;
+    this._mapGCAGrpToDispGrp['REFERENCE_IMAGES'] = this._model_grp;
+    this._mapGCAGrpToDispGrp['ANATOMY_IMAGES'] = this._model_grp;
+    this._mapGCAGrpToDispGrp['PATHS'] = this._model_grp;
+    this._mapGCAGrpToDispGrp['ROI'] = this._model_grp;
+    this._mapGCAGrpToDispGrp['CURSOR'] = this._model_grp;
+    this._mapGCAGrpToDispGrp['TRACKS'] = this._tracks_grp;
+    this._mapGCAGrpToDispGrp['LANDMARKS'] = this._landmarks_grp;
+    this._mapGCAGrpToDispGrp['MARKERS'] = this._markers_grp;
+    this._mapGCAGrpToDispGrp['BLOOM'] = this._bloom_grp;
     // Interaction
     this._canvas.on('mouse:down', this._onMouseDown.bind(this));
     this._canvas.on('mouse:up', this._onMouseUp.bind(this));
@@ -195,9 +206,7 @@ class GCA2DRenderer {
   setProperties(grp, id, prop) {
     let d_itm, d_grp; [d_grp, d_itm] = this.findDispObj(grp, id);
     if(this._isDefined(d_grp) && this._isDefined(d_itm)) {
-      // TODO this will probably only work for opacity and visible
-      d_itm.set(prop);
-      this._renderAll();
+      this.setObjProperty(d_itm, prop);
     }
   }
 
@@ -216,6 +225,153 @@ class GCA2DRenderer {
       val = d_itm.get(prop);
     }
     return(val);
+  }
+
+  /*!
+   * @function	setObjProperty
+   * @brief	Sets the properties of a single display object.
+   * @param	obj	The display object.
+   * @param	prop	Properties to set.
+   */
+  setObjProperty(obj, prop) {
+    // TODO this will probably only work for opacity and visible
+    obj.set(prop);
+    this._renderAll();
+  }
+
+  /*!
+   * @function	getObjProperty
+   * @brief	Gets the value of a single display object property.
+   * @param	obj	The display object.
+   * @param	prop	Properties to set.
+   */
+  getObjProperty(obj, prop) {
+    let val = obj.get(prop);
+    return(val);
+  }
+
+  /*!
+   * @function  getClosestObj
+   * @return	The closest object in the required group or undefined.
+   * @brief	Gets the closest object to a given position and with a given
+   * 		tolerance where the object is in the given group.
+   * @parapm	grp	The group, should be either MARKERS or TRACKS.
+   * @param	pos	Position as a Fabric.js point.
+   * @param	tol	Tolerance distance.
+   */
+  getClosestObj(grp, pos, tol) {
+    let delMin = undefined;
+    let objMin = undefined;
+    let tol2 = tol * tol;
+    let objs = this.findAllDispObj(grp, undefined);
+    for(let i = 0; i < objs.length; ++i) {
+      let obj = objs[i][1];
+      switch(grp) {
+        case 'MARKERS':
+          if(this._isDefined(obj.gca_position)) {
+	    let t = [pos.x - obj.gca_position.x, pos.y - obj.gca_position.y];
+	    let del = t[0] * t[0] + t[1] * t[1];
+	    if((del < tol2) &&
+	       ((typeof objMin === 'undefined') || (del < delMin))) {
+		objMin = obj;
+		delMin = del;
+	    }
+	  }
+	  break;
+	case 'TRACKS':
+	  if((pos.x > obj.left - tol) &&
+	     (pos.y > obj.top - tol) &&
+	     (pos.x < obj.left + obj.width + tol) &&
+	     (pos.y < obj.top  + obj.height + tol)) {
+	    // Is near bounding box of the track so check points
+	    for(let j = 0; j < obj.points.length; ++j) {
+	      let p = obj.points[j];
+	      let t = [pos.x - p.x, pos.y - p.y];
+	      let del = t[0] * t[0] + t[1] * t[1];
+              if((del < tol2) && 
+                 ((typeof objMin === 'undefined') || (del < delMin))) {
+	        objMin = obj;
+                delMin = del;
+	      }
+	    }
+	  }
+	  break;
+	default:
+	  break;
+      }
+    }
+    return(objMin);
+  }
+
+  /*!
+   * @function  addTrack
+   * @return	The track object or undefined on error.
+   * @brief     Adds a track (line parallel to a midline path).
+   * @param     track_id        Reference id string for the track.
+   * @param     path_id         Midline path id.
+   * @param     start_idx       Index along the path at which the track starts.
+   * @param     end_idx         Index along the path at which the track ends.
+   * @param     col             Colour for the track.
+   * @param     dist            Distance from the midline for the track.
+   * @param     ang             Angle for the track with respect to the
+   *                            midline's reference normal in radians.
+   *                            In 2D this is just either a positive or
+   *                            negative value representing the two sides
+   *                            of the midline.
+   */
+  addTrack(track_id, path_id, start_idx, end_idx, col, dist, ang) {
+    let trk = undefined;
+    let path = undefined;
+    let path_idx = this._pathIdxFromID(path_id);
+    if(path_idx !== undefined) {
+      path = this._config.paths[path_idx];
+      if(start_idx > end_idx) {
+        let i = start_idx;
+        start_idx = end_idx;
+        end_idx = i;
+      }
+      if(start_idx < 0) {
+        start_idx = 0;
+      }
+      if(end_idx >= path.n) {
+        end_idx = path.n - 1;
+      }
+      let pts = [];
+      let tgt = [];
+      let sd = (ang < 0)? -dist: dist;
+      for(let i = start_idx; i <= end_idx; ++i) {
+	// TODO Have assumed consistent tangents and normals?
+        let pp = path.points[i];
+        let pt = path.tangents[i];
+	let pr = {x: -pt.y, y: pt.x}; 
+        pts.push({x: pp.x + (sd * pr.x),
+                  y: pp.y + (sd * pr.y)});
+        tgt.push({x: pt.x, y: pt.y});
+      }
+      let pdp = path.display_props;
+      trk = this._makePath(pts, track_id, {
+	    color: col,
+	    width: pdp.line_width,
+	    opacity: pdp.opacity,
+	    visible: pdp.is_visible});
+      trk['name'] = this.getTrackName(track_id);
+      trk['gca_group'] = 'TRACKS';  // Replace PATHS
+      this._tracks[track_id] = trk;
+      this._tracks_grp.add(trk);
+      this._canvas.moveTo(trk, this._dispLayers['TRACKS']);
+    }
+    return(trk);
+  }
+
+  /*!
+   * @function  removeTrack
+   * @brief     Removes the track with the given reference id.
+   * @param     track_id            Reference id string of the track.
+   */
+  removeTrack(track_id) {
+    let trk = this.findDispObj('TRACKS', track_id);
+    this._tracks_grp.remove(trk);
+    this._canvas.remove(trk);
   }
 
   /*!
@@ -332,7 +488,7 @@ class GCA2DRenderer {
     let rot = Math.floor(180 * Math.atan2(-tan.x, tan.y) / Math.PI);
     this._cursor.set({angle: rot});
     this._cursor.setPositionByOrigin(pos, 'center', 'center');
-    this._canvas.moveTo(this._cursor, this._layers['CURSOR']);
+    this._canvas.moveTo(this._cursor, this._dispLayers['CURSOR']);
     // Update roi
     let cp = this._config.paths[this._curPath];
     let gdp = this._config.display_props;
@@ -346,11 +502,34 @@ class GCA2DRenderer {
 	    bloom: true,
 	    visible: gdp.path_roi.visible});
     this._model_grp.add(this._roi);
-    this._canvas.moveTo(this._roi, this._layers['ROI']);
+    this._canvas.moveTo(this._roi, this._dispLayers['ROI']);
     // Update display
     this._renderAll();
   }
-  
+
+  /*!
+   * @class     GCA2DRenderer
+   * @function  getPathName
+   * @return    Path object name. Can be used to find/update path
+   *            object.
+   * @param     id              GCA path id.
+   */
+  getPathName(id) {
+    let name = this.pathNamePrefix + this.nameSep + id;
+    return(name);
+  }
+
+  /*!
+   * @class     GCA2DRenderer
+   * @function  getTrackName
+   * @return    Track object name. Can be used to find/update track object.
+   * @param     id              Track id.
+   */
+  getTrackName(id) {
+    let name = this.trackNamePrefix + this.nameSep + id;
+    return(name);
+  }
+
   /*!
    * @function	findDispObj
    * @return	Array of display group and display object or array with
@@ -363,14 +542,22 @@ class GCA2DRenderer {
    */
   findDispObj(gca_grp, gca_id) {
     let d_itm = undefined;
-    let d_grp = this._mapGroupsGCAToDisp[gca_grp];
+    let d_grp = this._mapGCAGrpToDispGrp[gca_grp];
     if(this._isDefined(d_grp)) {
       for(let i = 0; i < d_grp._objects.length; ++i) {
 	let itm = d_grp._objects[i];
         if(this._isDefined(itm.gca_id) && this._isDefined(itm.gca_group) &&
-	   (gca_grp == itm.gca_group)  &&
 	   (!this._isDefined(gca_id) || (gca_id == itm.gca_id))) {
-	  d_itm = itm;
+
+	  if(gca_grp === 'TRACKS') {
+	    if(itm.gca_group === 'TRACKS') {
+	      d_itm = itm;
+	    } 
+	  } else {
+	    if(itm.gca_group === gca_grp) {
+	      d_itm = itm;
+	    }
+	  }
 	  break;
 	}
       }
@@ -392,9 +579,9 @@ class GCA2DRenderer {
    */
   findAllDispObj(gca_grp, gca_id) {
     let objs = [];
-    for(let k in this._mapGroupsGCAToDisp) {
+    for(let k in this._mapGCAGrpToDispGrp) {
       if((!this._isDefined(gca_grp)) || (k === gca_grp)) {
-        let d_grp = this._mapGroupsGCAToDisp[k];
+        let d_grp = this._mapGCAGrpToDispGrp[k];
 	if(this._isDefined(d_grp)) {
 	  for(let i = 0; i < d_grp._objects.length; ++i) {
 	    let itm = d_grp._objects[i];
@@ -503,6 +690,7 @@ class GCA2DRenderer {
       let path_data;
       const path1 = path; // Make sure path passed to function is correct
       this._loadJson(path.filepath + '/' + path.spline_filename, (obj) => {
+	path1['name'] = this.getPathName(path.id);
 	path1['n'] = obj.n;
 	path1['points'] = obj.points;
 	path1['tangents'] = obj.tangents;
@@ -563,7 +751,7 @@ class GCA2DRenderer {
 		  img.applyFilters();
 		}
 		this._model_grp.add(img);
-		this._canvas.moveTo(img, this._layers['REFERENCE_IMAGES']);
+		this._canvas.moveTo(img, this._dispLayers['REFERENCE_IMAGES']);
 		}
 		break;
 	    case 'ANATOMY_IMAGES':
@@ -589,7 +777,7 @@ class GCA2DRenderer {
 		  img['gca_id'] = obj.id;
 		  img['gca_group'] = obj.group;
 		  this._model_grp.add(img);
-		  this._canvas.moveTo(img, this._layers['ANATOMY_IMAGES']);
+		  this._canvas.moveTo(img, this._dispLayers['ANATOMY_IMAGES']);
 		}
 	      }
 	      break;
@@ -613,7 +801,7 @@ class GCA2DRenderer {
 	    opacity: pdp.opacity,
 	    visible: pdp.is_visible});
         this._model_grp.add(this._paths[pi]);
-	this._canvas.moveTo(this._paths[pi], this._layers['PATHS']);
+	this._canvas.moveTo(this._paths[pi], this._dispLayers['PATHS']);
       }
       let cp = this._config.paths[this._curPathIdx];
       this._roi = this._makePath(
@@ -621,9 +809,10 @@ class GCA2DRenderer {
 	      color: this._parseColor(dp.path_roi.color),
 	      width: dp.path_roi.line_width,
 	      opacity: dp.path_roi.opacity,
+	      bloom: true,
 	      visible: dp.path_roi.visible});
       this._model_grp.add(this._roi);
-      this._canvas.moveTo(this._roi, this._layers['ROI']);
+      this._canvas.moveTo(this._roi, this._dispLayers['ROI']);
     }
     /* Setup landmarks. */
     if(this._isDefined(this._config.landmarks)) {
@@ -647,13 +836,13 @@ class GCA2DRenderer {
           lbl_pos.y += ldp.label_offset[1] * ms;
 	}
 	let lbl = this._makeLabel(lbl_pos, ana.abbreviated_name,
-	                      l.id, 'LANDMARK_LABELS', {
+	                      l.id, 'LANDMARKS', {
 	    font_size: this._config.display_props.label_font_size,
 	    color: this._parseColor(ldp.color)});
         this._landmarks_grp.add(lmk);
         this._landmarks_grp.add(lbl);
-        this._canvas.moveTo(lmk, this._layers['LANDMARKS']);
-        this._canvas.moveTo(lbl, this._layers['LANDMARKS']);
+        this._canvas.moveTo(lmk, this._dispLayers['LANDMARKS']);
+        this._canvas.moveTo(lbl, this._dispLayers['LANDMARKS']);
       }
     }
     /* Create cursor. */
@@ -663,7 +852,7 @@ class GCA2DRenderer {
 	size: cdp.size});
     this._cursor['gca_group'] = 'CURSOR';
     this._model_grp.add(this._cursor);
-    this._canvas.moveTo(this._cursor, this._layers['CURSOR']);
+    this._canvas.moveTo(this._cursor, this._dispLayers['CURSOR']);
     /* Set canvas size. */
     this._onResize();
   }
@@ -742,6 +931,7 @@ class GCA2DRenderer {
     mrk.scaleToHeight(hgt);
     mrk['gca_id'] = id;
     mrk['gca_group'] = grp;
+    mrk['gca_type'] = 'MARKER';
     mrk['gca_position'] = new fabric.Point(pos.x, pos.y);
     let r = mrk.getBoundingRect();
     mrk.left = pos.x - (r.width / 2);
@@ -784,6 +974,7 @@ class GCA2DRenderer {
     lbl.top = pos.y;
     lbl['gca_id'] = id;
     lbl['gca_group'] = grp;
+    lbl['gca_type'] = 'LABEL';
     return(lbl);
   }
 
@@ -853,7 +1044,7 @@ class GCA2DRenderer {
    * @return	Point on midline or undefined.
    * @brief	Maps the given fabric point to the midline of the current
    * 		path if the given point is within the domain of the mapping.
-   * @param	Given point for mapping.
+   * @param	p	Given point for mapping.
    */
   mapPointToMidline(p) {
     let pom = undefined;
@@ -872,6 +1063,54 @@ class GCA2DRenderer {
   }
 
   /*!
+   * @function	mapIntervalToMidline
+   * @return	An array with the path, midline start and end index of the
+   * 		form [<gca path id>, <start index>, <end index>]
+   * 		or undefined if the intervals are invalid.
+   * @brief	Maps an interval to a range of indices along a path. The
+   * 		range is:
+   * 		  index(lmk0) + floor(f0 * (index(lmk1) - index(lmk0)),
+   * 		  index(lmk2) + floor(f1 * (index(lmk3) - index(lmk2))
+   * 		where index(lmk) is the path index of landmark lmk.
+   * 		If any of the landmarks are not defined for the model
+   * 		then undefined will be returned.
+   * @param	lmk0	First landmark used to define start point.
+   * @param	lmk1	Second landmark used to define start point.
+   * @param	f0	Fraction from lmk0 to lmk1 of start point.
+   * @param	lmk2	First landmark used to define end point.
+   * @param	lmk3	Second landmark used to define end point.
+   * @param	f1	Fraction from lmk2 to lmk3 of end point.
+   */
+  mapIntervalToMidline(lmk0, lmk1, f0, lmk2, lmk3, f1) {
+    let pse = undefined;
+    let lmk = [lmk0, lmk1, lmk2, lmk3];
+    let lmp = Array(4);
+    let l0;
+    for(let i = 0; i < 4; ++i) {
+      let l1 = this.landmarkFromAnatID(lmk[i]);
+      if(typeof l1 !== 'undefined') {
+        lmp[i] = l1.position;
+	if((i > 0) && (l0.paths[0] !== l1.paths[0])) {
+	  lmp = undefined;
+	}
+      } else {
+        lmp = undefined;
+	break;
+      }
+      if(typeof lmp === 'undefined') {
+        break;
+      }
+      l0 = l1;
+    }
+    if(typeof lmp !== 'undefined') {
+      pse = [l0.paths[0],
+             Number(lmp[0]) + Math.floor(f0 * (lmp[1] - lmp[0])),
+	     Number(lmp[2]) + Math.floor(f1 * (lmp[3] - lmp[2]))];
+    }
+    return(pse);
+  }
+
+  /*!
    * @function	addMarker
    * @brief	Adds a marker (with an optional text label).
    * @param	id		Reference id string for the marker.
@@ -887,11 +1126,11 @@ class GCA2DRenderer {
     if(mapped) {
       let mrk = this._makeMarker('pin', mpos, id, 'MARKERS', props);
       this._markers_grp.add(mrk);
-      this._canvas.moveTo(mrk, this._layers['MARKERS']);
+      this._canvas.moveTo(mrk, this._dispLayers['MARKERS']);
       if(this._isDefined(txt)) {
-        let lbl = this._makeLabel(mpos, txt, id, 'MARKER_LABELS', props);
+        let lbl = this._makeLabel(mpos, txt, id, 'MARKERS', props);
         this._markers_grp.add(lbl);
-        this._canvas.moveTo(lbl, this._layers['MARKERS']);
+        this._canvas.moveTo(lbl, this._dispLayers['MARKERS']);
       }
     }
   }
@@ -905,18 +1144,15 @@ class GCA2DRenderer {
   removeMarker(id) {
     const itm = 1;
     const grp = 0;
-    let mrk = this.findDispObj('MARKERS', id);
-    let lbl = this.findDispObj('MARKER_LABELS', id);
-    if(this._isDefined(mrk[grp]) && this._isDefined(mrk[itm])) {
-      this._canvas.remove(mrk[itm]);
-      this._markers_grp.remove(mrk[itm]);
-    }
-    if(this._isDefined(lbl[grp]) && this._isDefined(lbl[itm])) {
-      this._canvas.remove(lbl[itm]);
-      this._markers_grp.remove(lbl[itm]);
+    let mrks = this.findAllDispObj('MARKERS', id);
+    for(let i = 0; i < mrks.length; ++i) {
+      let mrk = mrks[i];
+      if(this._isDefined(mrk[grp]) && this._isDefined(mrk[itm])) {
+	this._canvas.remove(mrk[itm]);
+	this._markers_grp.remove(mrk[itm]);
+      }
     }
   }
-
 
   /*!
    * @function  landmarkFromID
@@ -930,6 +1166,25 @@ class GCA2DRenderer {
     for(let li = 0; li < lmks.length; ++li) {
       let l = lmks[li];
       if(l.id === id) {
+        lmk = l;
+	break;
+      }
+    }
+    return(lmk);
+  }
+
+  /*!
+   * @function  landmarkFromAnatID
+   * @return	landmark config or undefined if not found
+   * @brief	Given a landmark's GCA anatomy id returns te given landmark.
+   * @param	id	Required landmark's GCA anatomy id
+   */
+  landmarkFromAnatID(id) {
+    var lmk = undefined;
+    let lmks = this._config.landmarks;
+    for(let li = 0; li < lmks.length; ++li) {
+      let l = lmks[li];
+      if(l.anatomy[0].id === id) {
         lmk = l;
 	break;
       }
@@ -1104,12 +1359,12 @@ class GCA2DRenderer {
    */
   _objToBloomImage(obj, bloom) {
     let bnd = obj.getBoundingRect();
-    bnd.left -= bloom.radius;
-    bnd.top -= bloom.radius;
-    bnd.width += 2 * bloom.radius;
-    bnd.height += 2 * bloom.radius;
+    bnd.left -= 3 * bloom.radius;
+    bnd.top -= 3 * bloom.radius;
+    bnd.width += 6 * bloom.radius;
+    bnd.height += 6 * bloom.radius;
     let fac = this._clamp(
-        5 * bloom.radius / this._max([bnd.width, bnd.height]), 0.0, 1.0);
+        2.0 * bloom.radius / this._max([bnd.width, bnd.height]), 0.0, 1.0);
     let img = this._renderObjsToImage([obj], this._canvas, bnd, 1.0);
     let flt0 = new fabric.Image.filters.Blur({blur: fac});
     let flt1 = new fabric.Image.filters.Contrast({contrast: bloom.contrast});
@@ -1177,16 +1432,16 @@ class GCA2DRenderer {
    * 		then this involves two passes through the objects.
    */
   _renderAll() {
-    /* Remove any existing bloom images. */
+    // Remove any existing bloom images.
     while(this._bloom_grp._objects.length) {
       let obj = this._bloom_grp._objects.pop();
       this._canvas.remove(obj);
     }
-    /* Compute any new bloom images. */
+    // Compute any new bloom images.
     if(this._bloom.enabled) {
-      for(let layer in this._layers) {
+      for(let layer in this._dispLayers) {
 	if(layer !== 'BLOOM') {
-	  let d_grp = this._mapGroupsGCAToDisp[layer];
+	  let d_grp = this._mapGCAGrpToDispGrp[layer];
 	  if(this._isDefined(d_grp)) {
 	    for(let i = 0; i < d_grp._objects.length; ++i) {
 	      let obj = d_grp._objects[i];
@@ -1195,11 +1450,19 @@ class GCA2DRenderer {
 		let img = this._objToBloomImage(obj, this._bloom);
 		img.set({selectable: false});
 		this._bloom_grp.add(img);
-		this._canvas.moveTo(img, this._layers['BLOOM']);
+		this._canvas.moveTo(img, this._dispLayers['BLOOM']);
 	      }
 	    }
 	  }
 	}
+      }
+    }
+    // Bring higher layers to the top
+    for(let layer in this._dispLayers) {
+      let d_grp = this._mapGCAGrpToDispGrp[layer];
+      for(let i = 0; i < d_grp._objects.length; ++i) {
+        let obj = d_grp._objects[i];
+        this._canvas.bringToFront(obj);
       }
     }
     this._canvas.renderAll();
