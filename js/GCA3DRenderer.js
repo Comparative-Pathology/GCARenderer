@@ -264,6 +264,75 @@ class GCA3DRenderer {
   }
 
   /**
+   * @class     GCA3DRenderer
+   * @function  mapIntervalToMidline
+   * @return    An array with the path, midline start and end index of the
+   *            form [<gca path id>, <start index>, <end index>]
+   *            or undefined if the intervals are invalid.
+   * @brief     Maps an interval to a range of indices along a path. The
+   *            range is:
+   *              index(lmk0) + floor(f0 * (index(lmk1) - index(lmk0)),
+   *              index(lmk2) + floor(f1 * (index(lmk3) - index(lmk2))
+   *            where index(lmk) is the path index of landmark lmk.
+   *            If any of the landmarks are not defined for the model
+   *            then undefined will be returned.
+   * @param     lmk0    First landmark used to define start point.
+   * @param     lmk1    Second landmark used to define start point.
+   * @param     f0      Fraction from lmk0 to lmk1 of start point.
+   * @param     lmk2    First landmark used to define end point.
+   * @param     lmk3    Second landmark used to define end point.
+   * @param     f1      Fraction from lmk2 to lmk3 of end point.
+   */
+  mapIntervalToMidline(lmk0, lmk1, f0, lmk2, lmk3, f1) {
+    let pse = undefined;
+    let lmk = [lmk0, lmk1, lmk2, lmk3];
+    let lmp = Array(4);
+    let l0;
+    for(let i = 0; i < 4; ++i) {
+      let l1 = this.landmarkFromAnatID(lmk[i]);
+      if(typeof l1 !== 'undefined') {
+        lmp[i] = l1.position;
+        if((i > 0) && (l0.paths[0] !== l1.paths[0])) {
+          lmp = undefined;
+        }
+      } else {
+        lmp = undefined;
+        break;
+      }
+      if(typeof lmp === 'undefined') {
+        break;
+      }
+      l0 = l1;
+    }
+    if(typeof lmp !== 'undefined') {
+      pse = [l0.paths[0],
+             Number(lmp[0]) + Math.floor(f0 * (lmp[1] - lmp[0])),
+             Number(lmp[2]) + Math.floor(f1 * (lmp[3] - lmp[2]))];
+    }
+    return(pse);
+  }
+
+  /**
+   * @class     GCA3DRenderer
+   * @function  landmarkFromAnatID
+   * @return    landmark config or undefined if not found
+   * @brief     Given a landmark's GCA anatomy id returns te given landmark.
+   * @param     id      Required landmark's GCA anatomy id
+   */
+  landmarkFromAnatID(id) {
+    var lmk = undefined;
+    let lmks = this._config.landmarks;
+    for(let li = 0; li < lmks.length; ++li) {
+      let l = lmks[li];
+      if(l.anatomy[0].id === id) {
+        lmk = l;
+        break;
+      }
+    }
+    return(lmk);
+  }
+
+  /**
    * @class	GCA3DRenderer
    * @function	addTrack
    * @brief	Adds a track (line parallel to a midline path).
