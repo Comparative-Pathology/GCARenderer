@@ -12,7 +12,6 @@ repository
 
 GCARenderer was developed for use by the
 [Gut Cell Atlas Project](https://www.ed.ac.uk/comparative-pathology/the-gut-cell-atlas-project)
-Gut Cell Atlas Project</a>
 funded by the
 [Leona M. and Harry B. Helmsley Charitable Trust](https://helmsleytrust.org/) .
 

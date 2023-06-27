@@ -48,7 +48,7 @@
 class GCA2DRenderer {
   constructor(win, con, post_load_fn, pick_fn) {
     this.type = 'GCA2DRenderer';
-    Object.defineProperty(this, 'version', {value: '2.2.0', writable: false});
+    Object.defineProperty(this, 'version', {value: '2.2.1', writable: false});
     this._win = win;
     this._container = con;
     this._pick_fn = pick_fn;
@@ -128,6 +128,9 @@ class GCA2DRenderer {
     // Configuration
     if(this._isArray(cfg)) {
       cfg = cfg[0];
+    }
+    if(!(cfg.model_dir)) {
+      cfg['model_dir'] = '';
     }
     this._sortLandmarks(cfg);
     this._config = cfg;
@@ -650,7 +653,8 @@ class GCA2DRenderer {
 	switch(obj.group) {
 	  case 'REFERENCE_IMAGES':
 	    if(!this._isDefined(this._ref_image)) {
-	      this._loadImage(obj.filepath + '/' + obj.filename, (img) => {
+	      this._loadImage(this._config.model_dir +
+	                      obj.filepath + '/' + obj.filename, (img) => {
 	        this._ref_image = img;
 	      });
 	    }
@@ -658,7 +662,8 @@ class GCA2DRenderer {
 	  case 'ANATOMY_IMAGES':
 	    if(!this._isDefined(this._anat_images[obj.id])) {
 	      const obj1 = obj; // Make sure obj passed to function is correct
-	      this._loadImage(obj1.filepath + '/' + obj1.filename, (img) => {
+	      this._loadImage(this._config.model_dir +
+                              obj1.filepath + '/' + obj1.filename, (img) => {
 	        this._anat_images[obj1.id] = img;
 	      });
 	    }
@@ -689,7 +694,8 @@ class GCA2DRenderer {
       let path = this._config.paths[i];
       let path_data;
       const path1 = path; // Make sure path passed to function is correct
-      this._loadJson(path.filepath + '/' + path.spline_filename, (obj) => {
+      this._loadJson(this._config.model_dir +
+                     path.filepath + '/' + path.spline_filename, (obj) => {
 	path1['name'] = this.getPathName(path.id);
 	path1['n'] = obj.n;
 	path1['points'] = obj.points;
@@ -705,7 +711,8 @@ class GCA2DRenderer {
 	path1['points'] = np;
 	path1['tangents'] = nt;
       });
-      this._loadJson(path.filepath + '/' + path.map_filename, (obj) => {
+      this._loadJson(this._config.model_dir +
+                     path.filepath + '/' + path.map_filename, (obj) => {
         path1['mapping'] = obj;
       });
     }
